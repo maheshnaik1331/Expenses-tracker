@@ -10,7 +10,7 @@ import { RecurringBillsModule } from './recurring-bills/recurring-bills.module';
 
 @Module({
   imports: [
-    // AuthModule,
+    AuthModule,
     PrismaModule,
     // AccountsModule,
     // TransactionsModule,
