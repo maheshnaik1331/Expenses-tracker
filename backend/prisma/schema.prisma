@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. SAAS AUTHENTICATION & USERS
+// ==========================================
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String          @id // Matches Firebase UID
+  email         String          @unique
+  firstName     String?
+  lastName      String?
+  role          Role            @default(USER)
+
+  // Relationships
+  accounts      Account[]
+  transactions  Transaction[]
+  debts         Debt[]
+  recurringBills RecurringBill[] // <-- NEW: Added relationship
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+// ==========================================
+// 2. FINANCIAL LEDGERS (ACCOUNTS)
+// ==========================================
+
+model Account {
+  id             String          @id @default(uuid())
+  name           String
+  type           String        
+  
+  // Account Details
+  accountNumber  String?       
+  ifscCode       String?       
+  branch         String?       
+  
+  currentBalance Float           @default(0)
+  currency       String          @default("INR")
+  status         String          @default("ACTIVE")
+  
+  // SaaS Tenant Link
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  
+  // Relationships
+  transactions   Transaction[]
+  recurringBills RecurringBill[] // <-- NEW: Added relationship
+}
+
+// ==========================================
+// 3. TRANSACTIONS
+// ==========================================
+
+model Transaction {
+  id             String        @id @default(uuid())
+  type           String        // 'INCOME' or 'EXPENSE'
+  amount         Float
+  category       String
+  note           String?
+  date           DateTime      @default(now())
+
+  // Relates to the Account
+  accountId      String
+  account        Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // SaaS Tenant Link
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+// ==========================================
+// 4. LIABILITIES & RECEIVABLES ENGINE (LOANS)
+// ==========================================
+
+enum DebtType {
+  HOME
+  GOLD
+  PERSONAL
+  BUSINESS
+}
+
+enum DebtStatus {
+  ACTIVE
+  CLOSED
+  FORECLOSED
+  DEFAULTED
+  RESTRUCTURED
+}
+
+enum LoanDirection {
+  BORROWED  // You took money (Liability)
+  LENT      // You gave money (Asset)
+}
+
+model Debt {
+  id             String        @id @default(uuid())
+  counterparty   String        // Bank name, friend's name, or business
+  
+  direction      LoanDirection @default(BORROWED)
+  type           DebtType
+  
+  principal      Float         
+  monthlyRate    Float?        // Made optional (friends/family might not charge interest)
+  
+  startDate      DateTime      @default(now())
+  status         DebtStatus    @default(ACTIVE)
+  clearedDate    DateTime?
+
+  // SaaS Tenant Link
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+// ==========================================
+// 5. RECURRING BILLS ENGINE
+// ==========================================
+
+enum RecurrenceInterval {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+model RecurringBill {
+  id             String             @id @default(uuid())
+  name           String             // e.g., "Apartment Rent", "AWS Hosting"
+  amount         Float
+  category       String             
+  
+  // The Custom Recurrence Logic
+  interval       RecurrenceInterval @default(MONTHLY)
+  customDays     Int?               // ONLY used if interval is CUSTOM
+  
+  // The Timeline Tracker
+  nextDueDate    DateTime           
+  lastPaidDate   DateTime?          
+  status         String             @default("ACTIVE") 
+
+  // Default account this bill is paid from
+  accountId      String
+  account        Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // SaaS Tenant Link
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
