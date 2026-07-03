@@ -7,7 +7,7 @@ export class AuthController {
     constructor(private prisma: PrismaService) { }
 
     @Post('sync')
-    @UseGuards(FirebaseAuthGuard)
+    // @UseGuards(FirebaseAuthGuard)
     async syncUser(@Req() req) {
         // Upsert guarantees the user is created if they are missing
         return this.prisma.user.upsert({
