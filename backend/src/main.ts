@@ -1,29 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { initializeApp, getApps, cert } from 'firebase-admin/app'; // Modular imports
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Initialize Firebase Admin securely using the modular syntax
-  if (getApps().length === 0) {
-    initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        // Replace escaped newline characters so the key formats correctly
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    });
-  }
-
-  // Explicit CORS configuration
+  // Enable CORS so your Vercel frontend can talk to this backend safely
   app.enableCors({
-    origin: 'http://localhost:3000',
+    origin: '*', // In production, you can replace this with your frontend's Vercel URL
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  await app.listen(process.env.PORT ?? 4000);
+  app.useGlobalPipes(new ValidationPipe());
+
+  // Vercel handles the port automatically in serverless environments, 
+  // but we keep 4000 as a fallback for your local machine
+  const port = process.env.PORT || 4000;
+  await app.listen(port);
 }
 bootstrap();
