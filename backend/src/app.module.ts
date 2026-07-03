@@ -10,12 +10,12 @@ import { RecurringBillsModule } from './recurring-bills/recurring-bills.module';
 
 @Module({
   imports: [
-    AuthModule,
+    // AuthModule,
     PrismaModule,
-    AccountsModule,
-    TransactionsModule,
-    LoansModule,
-    RecurringBillsModule,
+    // AccountsModule,
+    // TransactionsModule,
+    // LoansModule,
+    // RecurringBillsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
