@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service'; // <-- 1. Import Prism
 
 @Module({
   providers: [AuthService, PrismaService], // <-- 2. Inject Prisma here
-  controllers: [AuthController]
+  controllers: [
+    //AuthController
+  ]
 })
 export class AuthModule { }
