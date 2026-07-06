@@ -8,7 +8,8 @@ import api from "@/lib/api";
 import { toast } from "sonner";
 import {
     Loader2, Plus, ArrowUpRight, ArrowDownRight,
-    Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase, IndianRupee
+    Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase, IndianRupee,
+    Pencil, Trash2
 } from "lucide-react";
 import {
     Dialog,
@@ -42,7 +43,10 @@ export default function TransactionsPage() {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [fetching, setFetching] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+
+    // Modal & Edit State
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     // Filter State
     const [searchTerm, setSearchTerm] = useState("");
@@ -61,7 +65,6 @@ export default function TransactionsPage() {
     const fetchDashboardData = async () => {
         try {
             setFetching(true);
-            // Run both API calls in parallel for speed
             const [txRes, accRes] = await Promise.all([
                 api.get("/transactions"),
                 api.get("/accounts")
@@ -97,6 +100,7 @@ export default function TransactionsPage() {
             note: "",
             accountId: accounts.length > 0 ? accounts[0].id : ""
         });
+        setEditingId(null);
     };
 
     // Switch between Income and Expense categories dynamically
@@ -108,7 +112,34 @@ export default function TransactionsPage() {
         });
     };
 
-    // Submit New Transaction
+    // Open Edit Modal with Pre-filled Data
+    const handleEditClick = (tx: any) => {
+        setForm({
+            type: tx.type,
+            amount: tx.amount.toString(),
+            category: tx.category,
+            note: tx.note || "",
+            accountId: tx.accountId
+        });
+        setEditingId(tx.id);
+        setIsDialogOpen(true);
+    };
+
+    // Handle Delete Transaction
+    const handleDeleteClick = async (id: string) => {
+        if (!window.confirm("Are you sure you want to delete this transaction? This action will impact your account balance and cannot be undone.")) return;
+
+        try {
+            await api.delete(`/transactions/${id}`);
+            toast.success("Transaction deleted successfully.");
+            fetchDashboardData(); // Refresh the list and balances
+        } catch (err) {
+            console.error("Deletion failed:", err);
+            toast.error("Failed to delete transaction.");
+        }
+    };
+
+    // Submit New OR Edited Transaction
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.amount || parseFloat(form.amount) <= 0) return toast.error("Please enter a valid amount.");
@@ -117,21 +148,30 @@ export default function TransactionsPage() {
         try {
             setSubmitting(true);
 
-            await api.post("/transactions", {
+            const payload = {
                 type: form.type,
                 amount: parseFloat(form.amount),
                 category: form.category,
                 note: form.note,
                 accountId: form.accountId
-            });
+            };
 
-            toast.success(`${form.type === "INCOME" ? "Income" : "Expense"} logged successfully.`);
+            if (editingId) {
+                // UPDATE EXISTING
+                await api.patch(`/transactions/${editingId}`, payload);
+                toast.success("Transaction updated successfully.");
+            } else {
+                // CREATE NEW
+                await api.post("/transactions", payload);
+                toast.success(`${form.type === "INCOME" ? "Income" : "Expense"} logged successfully.`);
+            }
+
             setIsDialogOpen(false);
             resetForm();
             fetchDashboardData(); // Refresh the list and balances
         } catch (err) {
             console.error("Submission failed:", err);
-            toast.error("Failed to record transaction.");
+            toast.error(editingId ? "Failed to update transaction." : "Failed to record transaction.");
         } finally {
             setSubmitting(false);
         }
@@ -171,13 +211,14 @@ export default function TransactionsPage() {
                         <div>
                             <h1 className="text-3xl font-bold text-zinc-900 tracking-tight">Cashflow Ledger</h1>
                             <p className="text-zinc-500 text-sm mt-1">
-                                Log, categorize, and monitor your enterprise income and expenses.
+                                Log, categorize, edit, and monitor your enterprise income and expenses.
                             </p>
                         </div>
 
                         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
                             <DialogTrigger
                                 disabled={accounts.length === 0}
+                                onClick={() => resetForm()} // Ensure form is clean for new entries
                                 className="flex items-center justify-center gap-2 bg-zinc-900 text-white font-semibold text-sm px-5 py-3 rounded-xl shadow-md hover:bg-zinc-800 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                 title={accounts.length === 0 ? "Add a bank account first" : ""}
                             >
@@ -185,7 +226,9 @@ export default function TransactionsPage() {
                             </DialogTrigger>
                             <DialogContent className="bg-white p-6 rounded-2xl max-w-md w-full shadow-2xl border border-slate-100">
                                 <DialogHeader>
-                                    <DialogTitle className="text-xl font-bold text-zinc-900 mb-2">Record Entry</DialogTitle>
+                                    <DialogTitle className="text-xl font-bold text-zinc-900 mb-2">
+                                        {editingId ? "Edit Record" : "Record Entry"}
+                                    </DialogTitle>
                                 </DialogHeader>
 
                                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -281,8 +324,8 @@ export default function TransactionsPage() {
                                             disabled={submitting}
                                             className="bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50"
                                         >
-                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                                            Save Record
+                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingId ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />)}
+                                            {editingId ? "Update Record" : "Save Record"}
                                         </button>
                                     </div>
 
@@ -360,12 +403,13 @@ export default function TransactionsPage() {
                             ) : (
                                 filteredTransactions.map((tx) => {
                                     const isIncome = tx.type === "INCOME";
-                                    // Look up the account name for this transaction
                                     const account = accounts.find(a => a.id === tx.accountId);
 
                                     return (
-                                        <div key={tx.id} className="p-4 sm:px-6 hover:bg-slate-50 transition-colors flex items-center justify-between gap-4">
-                                            <div className="flex items-center gap-4 min-w-0">
+                                        <div key={tx.id} className="group p-4 sm:px-6 hover:bg-slate-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
+                                            {/* Transaction Info */}
+                                            <div className="flex items-center gap-4 min-w-0 flex-1">
                                                 <div className={`p-3 rounded-xl flex-shrink-0 ${isIncome ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-zinc-600'}`}>
                                                     {getCategoryIcon(tx.category, tx.type)}
                                                 </div>
@@ -379,14 +423,36 @@ export default function TransactionsPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="text-right flex-shrink-0">
-                                                <p className={`text-base font-bold font-mono ${isIncome ? 'text-emerald-600' : 'text-zinc-900'}`}>
-                                                    {isIncome ? "+" : "-"}₹{tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                                                </p>
-                                                <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mt-1">
-                                                    {new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                                                </p>
+                                            {/* Amount & Actions */}
+                                            <div className="flex items-center justify-between sm:justify-end gap-6 sm:w-auto border-t sm:border-0 pt-4 sm:pt-0 border-slate-100">
+                                                <div className="text-right flex-shrink-0">
+                                                    <p className={`text-base font-bold font-mono ${isIncome ? 'text-emerald-600' : 'text-zinc-900'}`}>
+                                                        {isIncome ? "+" : "-"}₹{tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mt-1">
+                                                        {new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                    </p>
+                                                </div>
+
+                                                {/* Action Buttons (Edit / Delete) */}
+                                                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={() => handleEditClick(tx)}
+                                                        className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        title="Edit Transaction"
+                                                    >
+                                                        <Pencil className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteClick(tx.id)}
+                                                        className="p-2 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                                        title="Delete Transaction"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </div>
+
                                         </div>
                                     )
                                 })

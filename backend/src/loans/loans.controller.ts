@@ -1,28 +1,36 @@
-import { Controller, Get, Post, Body, Param, Patch, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
 import { LoansService } from './loans.service';
-import { CreateLoanDto } from './dto/create-loan.dto'; // <-- Import the DTO here
+import { CreateLoanDto } from './dto/create-loan.dto';
+import { UpdateLoanDto } from './dto/update-loan.dto';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 
 @Controller('loans')
-@UseGuards(FirebaseAuthGuard)
+@UseGuards(FirebaseAuthGuard) // Secures all routes in this controller
 export class LoansController {
     constructor(private readonly loansService: LoansService) { }
 
     @Post()
-    async createLoan(
-        @Req() req,
-        @Body() body: CreateLoanDto // <-- Use the clean DTO class here
-    ) {
-        return this.loansService.createLoan(req.user.id, body);
+    create(@Req() req, @Body() createLoanDto: CreateLoanDto) {
+        return this.loansService.create(req.user.id, createLoanDto);
     }
 
     @Get()
-    async getLoans(@Req() req) {
-        return this.loansService.getActiveLoans(req.user.id);
+    findAllActive(@Req() req) {
+        return this.loansService.findAllActive(req.user.id);
+    }
+
+    @Patch(':id')
+    update(@Req() req, @Param('id') id: string, @Body() updateLoanDto: UpdateLoanDto) {
+        return this.loansService.update(id, req.user.id, updateLoanDto);
+    }
+
+    @Delete(':id')
+    remove(@Req() req, @Param('id') id: string) {
+        return this.loansService.remove(id, req.user.id);
     }
 
     @Patch(':id/clear')
-    async clearLoan(@Req() req, @Param('id') id: string) {
-        return this.loansService.markAsCleared(req.user.id, id);
+    markAsCleared(@Req() req, @Param('id') id: string) {
+        return this.loansService.markAsCleared(id, req.user.id);
     }
 }

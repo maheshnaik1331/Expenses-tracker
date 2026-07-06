@@ -1,15 +1,14 @@
-import { IsString, IsNumber, IsEnum, IsOptional, IsDateString } from 'class-validator';
-import { DebtType, LoanDirection } from '@prisma/client';
+import { IsString, IsNumber, IsOptional, IsDateString } from 'class-validator';
 
 export class CreateLoanDto {
     @IsString()
     counterparty: string;
 
-    @IsEnum(LoanDirection, { message: 'Direction must be either BORROWED or LENT' })
-    direction: LoanDirection;
+    @IsString()
+    direction: 'BORROWED' | 'LENT';
 
-    @IsEnum(DebtType)
-    type: DebtType;
+    @IsString()
+    type: string;
 
     @IsNumber()
     principal: number;
@@ -20,4 +19,8 @@ export class CreateLoanDto {
 
     @IsDateString()
     startDate: string;
+
+    @IsOptional()
+    @IsDateString()
+    dueDate?: string; // <-- Make sure this is here!
 }

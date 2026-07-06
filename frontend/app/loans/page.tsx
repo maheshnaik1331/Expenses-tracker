@@ -9,7 +9,8 @@ import { toast } from "sonner";
 import {
     Loader2, Plus, ArrowDownRight, ArrowUpRight,
     Scale, Calendar, CheckCircle2, MoreVertical, ShieldCheck,
-    User, Building2, Percent, Wallet, Home, Briefcase, Coins
+    User, Building2, Percent, Wallet, Home, Briefcase, Coins,
+    Pencil, Trash2, Clock
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -31,6 +32,26 @@ const LOAN_TYPES = [
     { id: "GOLD", label: "Gold", icon: Coins },
 ];
 
+// Financial Calculation Engine
+const calculateFinancials = (principal: number | string, monthlyRate: number | string, startDate: string, dueDate: string | null) => {
+    const p = parseFloat(principal.toString()) || 0;
+    const r = parseFloat(monthlyRate.toString()) || 0;
+
+    if (!dueDate || r === 0 || p === 0) return { interest: 0, total: p };
+
+    const start = new Date(startDate).getTime();
+    const end = new Date(dueDate).getTime();
+
+    if (end <= start) return { interest: 0, total: p }; // Prevent negative time
+
+    // Calculate difference in days, convert to standard 30-day financial months
+    const diffDays = (end - start) / (1000 * 60 * 60 * 24);
+    const months = diffDays / 30;
+
+    const interest = p * (r / 100) * months;
+    return { interest, total: p + interest };
+};
+
 export default function LoansPage() {
     const { user, loading } = useAuth();
 
@@ -38,6 +59,7 @@ export default function LoansPage() {
     const [fetching, setFetching] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     const [filterMode, setFilterMode] = useState<"ALL" | "BORROWED" | "LENT">("ALL");
 
@@ -47,7 +69,8 @@ export default function LoansPage() {
         type: "PERSONAL",
         principal: "",
         monthlyRate: "",
-        startDate: new Date().toISOString().split('T')[0]
+        startDate: new Date().toISOString().split('T')[0],
+        dueDate: "" // NEW FIELD
     });
 
     const fetchLoans = async () => {
@@ -73,8 +96,38 @@ export default function LoansPage() {
             type: "PERSONAL",
             principal: "",
             monthlyRate: "",
-            startDate: new Date().toISOString().split('T')[0]
+            startDate: new Date().toISOString().split('T')[0],
+            dueDate: ""
         });
+        setEditingId(null);
+    };
+
+    const handleEditClick = (loan: any) => {
+        setForm({
+            direction: loan.direction,
+            counterparty: loan.counterparty,
+            type: loan.type,
+            principal: loan.principal.toString(),
+            monthlyRate: loan.monthlyRate ? loan.monthlyRate.toString() : "",
+            startDate: new Date(loan.startDate).toISOString().split('T')[0],
+            dueDate: loan.dueDate ? new Date(loan.dueDate).toISOString().split('T')[0] : ""
+        });
+        setEditingId(loan.id);
+        setIsDialogOpen(true);
+    };
+
+    const handleDeleteClick = async (id: string) => {
+        if (!window.confirm("Are you sure you want to delete this agreement? This action cannot be undone.")) return;
+
+        try {
+            toast.loading("Deleting record...", { id: "delete" });
+            await api.delete(`/loans/${id}`);
+            toast.success("Agreement deleted successfully.", { id: "delete" });
+            fetchLoans();
+        } catch (err) {
+            console.error("Deletion failed:", err);
+            toast.error("Failed to delete agreement.", { id: "delete" });
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -83,21 +136,31 @@ export default function LoansPage() {
 
         try {
             setSubmitting(true);
-            await api.post("/loans", {
+
+            const payload = {
                 counterparty: form.counterparty,
                 direction: form.direction,
                 type: form.type,
                 principal: parseFloat(form.principal),
                 monthlyRate: form.monthlyRate ? parseFloat(form.monthlyRate) : 0,
                 startDate: new Date(form.startDate).toISOString(),
-            });
+                dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : null
+            };
 
-            toast.success(form.direction === "BORROWED" ? "Liability recorded." : "Receivable asset recorded.");
+            if (editingId) {
+                await api.patch(`/loans/${editingId}`, payload);
+                toast.success("Agreement updated successfully.");
+            } else {
+                await api.post("/loans", payload);
+                toast.success(form.direction === "BORROWED" ? "Liability recorded." : "Receivable asset recorded.");
+            }
+
             setIsDialogOpen(false);
             resetForm();
             fetchLoans();
         } catch (err) {
-            toast.error("Failed to commit ledger transaction.");
+            console.error("Submission failed:", err);
+            toast.error(editingId ? "Failed to update ledger transaction." : "Failed to commit ledger transaction.");
         } finally {
             setSubmitting(false);
         }
@@ -115,10 +178,13 @@ export default function LoansPage() {
         }
     };
 
-    const totalBorrowed = loans.filter(l => l.direction === "BORROWED").reduce((sum, l) => sum + l.principal, 0);
-    const totalLent = loans.filter(l => l.direction === "LENT").reduce((sum, l) => sum + l.principal, 0);
+    const totalBorrowed = loans.filter(l => l.direction === "BORROWED").reduce((sum, l) => sum + calculateFinancials(l.principal, l.monthlyRate, l.startDate, l.dueDate).total, 0);
+    const totalLent = loans.filter(l => l.direction === "LENT").reduce((sum, l) => sum + calculateFinancials(l.principal, l.monthlyRate, l.startDate, l.dueDate).total, 0);
     const netExposure = totalLent - totalBorrowed;
     const filteredLoans = loans.filter(l => filterMode === "ALL" || l.direction === filterMode);
+
+    // Live preview for the form
+    const formPreview = calculateFinancials(form.principal, form.monthlyRate, form.startDate, form.dueDate);
 
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]"><Loader2 className="h-8 w-8 animate-spin text-zinc-900" /></div>;
 
@@ -160,7 +226,7 @@ export default function LoansPage() {
                                 <Plus className="w-4 h-4" /> Log Agreement
                             </DialogTrigger>
 
-                            {/* APP-LIKE MODAL DESIGN: Bottom sheet on mobile, wide modal on desktop */}
+                            {/* APP-LIKE MODAL DESIGN */}
                             <DialogContent className="bg-white p-0 rounded-t-[32px] sm:rounded-[32px] rounded-b-none sm:rounded-b-[32px] max-w-2xl w-full shadow-2xl border-0 overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85vh] mt-auto sm:mt-0 !mb-0 sm:!mb-auto align-bottom sm:align-middle">
 
                                 {/* Sticky Header */}
@@ -169,8 +235,12 @@ export default function LoansPage() {
                                         <Scale className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
                                     </div>
                                     <div>
-                                        <DialogTitle className="text-lg sm:text-xl font-bold text-zinc-900">Establish Credit Instrument</DialogTitle>
-                                        <p className="text-[10px] sm:text-xs text-zinc-500 font-medium mt-0.5 uppercase tracking-wider">Deploy Liability or Asset</p>
+                                        <DialogTitle className="text-lg sm:text-xl font-bold text-zinc-900">
+                                            {editingId ? "Update Credit Instrument" : "Establish Credit Instrument"}
+                                        </DialogTitle>
+                                        <p className="text-[10px] sm:text-xs text-zinc-500 font-medium mt-0.5 uppercase tracking-wider">
+                                            {editingId ? "Modify details" : "Deploy Liability or Asset"}
+                                        </p>
                                     </div>
                                 </div>
 
@@ -238,16 +308,15 @@ export default function LoansPage() {
                                                 />
                                             </div>
 
-                                            <div>
-                                                <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Principal Amount (₹)</label>
-                                                <input
-                                                    type="number" step="0.01" required placeholder="0.00"
-                                                    value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-lg sm:text-xl font-bold font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all shadow-inner"
-                                                />
-                                            </div>
-
                                             <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Principal Amount (₹)</label>
+                                                    <input
+                                                        type="number" step="0.01" required placeholder="0.00"
+                                                        value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })}
+                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-lg font-bold font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all shadow-inner"
+                                                    />
+                                                </div>
                                                 <div>
                                                     <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Interest / mo</label>
                                                     <div className="relative">
@@ -255,12 +324,13 @@ export default function LoansPage() {
                                                         <input
                                                             type="number" step="0.01" placeholder="0.0"
                                                             value={form.monthlyRate} onChange={(e) => setForm({ ...form, monthlyRate: e.target.value })}
-                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-3.5 text-sm font-bold font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all shadow-inner"
+                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-3.5 text-lg font-bold font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all shadow-inner"
                                                         />
                                                     </div>
                                                 </div>
+                                            </div>
 
-                                                {/* MODERN CUSTOM DATE PICKER TRICK */}
+                                            <div className="grid grid-cols-2 gap-4">
                                                 <div>
                                                     <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Start Date</label>
                                                     <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-inner focus-within:ring-2 focus-within:ring-zinc-900 transition-all">
@@ -272,7 +342,32 @@ export default function LoansPage() {
                                                         />
                                                     </div>
                                                 </div>
+                                                <div>
+                                                    <label className="text-[10px] sm:text-[11px] font-bold text-emerald-500 uppercase tracking-widest block mb-2">Target Payoff Date</label>
+                                                    <div className="relative overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/50 shadow-inner focus-within:ring-2 focus-within:ring-emerald-600 transition-all">
+                                                        <Clock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-600 pointer-events-none" />
+                                                        <input
+                                                            type="date"
+                                                            value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+                                                            className="w-full bg-transparent pl-10 pr-4 py-3.5 text-sm font-bold text-emerald-900 outline-none modern-date-input"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
+
+                                            {/* Live Projection Box */}
+                                            {form.dueDate && form.monthlyRate && form.principal && (
+                                                <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800 text-white flex justify-between items-center shadow-lg">
+                                                    <div>
+                                                        <p className="text-[10px] uppercase tracking-widest font-bold text-zinc-400 mb-1">Projected Total Amount</p>
+                                                        <p className="text-2xl font-bold tracking-tight">₹{formPreview.total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[10px] uppercase tracking-widest font-bold text-zinc-400 mb-1">Est. Interest</p>
+                                                        <p className="text-sm font-bold text-rose-400">+₹{formPreview.interest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </form>
                                 </div>
@@ -283,8 +378,8 @@ export default function LoansPage() {
                                         Cancel
                                     </button>
                                     <button form="loan-form" type="submit" disabled={submitting} className="bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-bold px-8 py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-zinc-900/20 disabled:opacity-50 w-full sm:w-auto">
-                                        {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                                        Lock Agreement
+                                        {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingId ? <Pencil className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />)}
+                                        {editingId ? "Update Agreement" : "Lock Agreement"}
                                     </button>
                                 </div>
                             </DialogContent>
@@ -296,25 +391,25 @@ export default function LoansPage() {
                         <div className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-rose-100 flex items-center gap-4 sm:gap-5 hover:shadow-md transition-all">
                             <div className="p-3 sm:p-4 bg-rose-50 text-rose-600 rounded-2xl shrink-0"><ArrowDownRight className="w-5 h-5 sm:w-6 sm:h-6" /></div>
                             <div className="min-w-0">
-                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Total Liabilities</p>
-                                <h2 className="text-xl sm:text-2xl font-bold text-rose-600 truncate">₹{totalBorrowed.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</h2>
+                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Projected Liabilities</p>
+                                <h2 className="text-xl sm:text-2xl font-bold text-rose-600 truncate">₹{totalBorrowed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
                             </div>
                         </div>
 
                         <div className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-emerald-100 flex items-center gap-4 sm:gap-5 hover:shadow-md transition-all">
                             <div className="p-3 sm:p-4 bg-emerald-50 text-emerald-600 rounded-2xl shrink-0"><ArrowUpRight className="w-5 h-5 sm:w-6 sm:h-6" /></div>
                             <div className="min-w-0">
-                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Total Assets</p>
-                                <h2 className="text-xl sm:text-2xl font-bold text-emerald-600 truncate">₹{totalLent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</h2>
+                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Projected Assets</p>
+                                <h2 className="text-xl sm:text-2xl font-bold text-emerald-600 truncate">₹{totalLent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
                             </div>
                         </div>
 
                         <div className="bg-zinc-900 p-5 sm:p-6 rounded-3xl shadow-lg border border-zinc-800 flex items-center gap-4 sm:gap-5 text-white transform hover:-translate-y-1 transition-all">
                             <div className="p-3 sm:p-4 bg-zinc-800 rounded-2xl shrink-0"><Wallet className="w-5 h-5 sm:w-6 sm:h-6" /></div>
                             <div className="min-w-0">
-                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Net Exposure</p>
+                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Total Net Exposure</p>
                                 <h2 className="text-xl sm:text-2xl font-bold truncate">
-                                    {netExposure < 0 ? "-" : ""}₹{Math.abs(netExposure).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                    {netExposure < 0 ? "-" : ""}₹{Math.abs(netExposure).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                                 </h2>
                             </div>
                         </div>
@@ -356,6 +451,9 @@ export default function LoansPage() {
                                 const typeIcon = LOAN_TYPES.find(t => t.id === loan.type)?.icon || Building2;
                                 const Icon = typeIcon;
 
+                                // Process financials for this specific card
+                                const metrics = calculateFinancials(loan.principal, loan.monthlyRate, loan.startDate, loan.dueDate);
+
                                 return (
                                     <div key={loan.id} className={`bg-white rounded-[24px] shadow-sm border hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col relative group ${isBorrowed ? 'border-rose-100/50' : 'border-emerald-100/50'}`}>
 
@@ -378,20 +476,38 @@ export default function LoansPage() {
                                                     <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end" className="bg-white w-48 p-2 rounded-2xl shadow-xl border border-slate-100 mt-2">
+                                                    <DropdownMenuItem onClick={() => handleEditClick(loan)} className="flex items-center gap-3 font-bold text-sm text-blue-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-blue-50">
+                                                        <Pencil className="w-4 h-4" /> Edit Record
+                                                    </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleMarkCleared(loan.id, loan.counterparty)} className="flex items-center gap-3 font-bold text-sm text-emerald-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-emerald-50">
                                                         <CheckCircle2 className="w-4 h-4" /> Mark as Settled
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleDeleteClick(loan.id)} className="flex items-center gap-3 font-bold text-sm text-rose-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-rose-50">
+                                                        <Trash2 className="w-4 h-4" /> Delete Record
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </div>
 
                                         <div className="p-5 sm:p-6 flex-1">
-                                            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Principal Amount</span>
+                                            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Total Projected Value</span>
                                             <span className="text-3xl sm:text-4xl font-bold text-zinc-900 block tracking-tight truncate">
-                                                ₹{loan.principal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                                ₹{metrics.total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                                             </span>
 
-                                            <div className="mt-6 sm:mt-8 flex items-center justify-between">
+                                            {/* Sub-breakdown box */}
+                                            <div className="mt-5 p-3 sm:p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-0.5">Principal</span>
+                                                    <span className="text-sm font-bold text-zinc-700">₹{loan.principal.toLocaleString("en-IN")}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-0.5">Est. Interest</span>
+                                                    <span className="text-sm font-bold text-rose-500">+₹{metrics.interest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-5 flex items-center justify-between">
                                                 <div>
                                                     <span className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Interest</span>
                                                     <span className="text-xs sm:text-sm font-bold text-zinc-700 font-mono">{loan.monthlyRate}% / mo</span>
@@ -403,14 +519,25 @@ export default function LoansPage() {
                                             </div>
                                         </div>
 
-                                        <div className="mt-auto p-4 sm:p-5 rounded-b-[24px] border-t bg-slate-50/50 border-slate-100 flex items-center justify-between">
-                                            <div className="flex items-center gap-2 text-zinc-500">
-                                                <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Originated</span>
+                                        <div className="mt-auto flex divide-x divide-slate-100 border-t border-slate-100">
+                                            <div className="flex-1 p-4 bg-slate-50/50 rounded-bl-[24px]">
+                                                <div className="flex items-center gap-1.5 text-zinc-400 mb-1">
+                                                    <Calendar className="w-3 h-3" />
+                                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest">Originated</span>
+                                                </div>
+                                                <span className="text-xs font-bold text-zinc-700 block truncate">
+                                                    {new Date(loan.startDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                                </span>
                                             </div>
-                                            <span className="text-[10px] sm:text-xs font-bold text-zinc-700 font-mono">
-                                                {new Date(loan.startDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
-                                            </span>
+                                            <div className="flex-1 p-4 bg-emerald-50/30 rounded-br-[24px]">
+                                                <div className="flex items-center gap-1.5 text-emerald-500 mb-1">
+                                                    <Clock className="w-3 h-3" />
+                                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest">Target Payoff</span>
+                                                </div>
+                                                <span className="text-xs font-bold text-emerald-700 block truncate">
+                                                    {loan.dueDate ? new Date(loan.dueDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' }) : "Not Set"}
+                                                </span>
+                                            </div>
                                         </div>
 
                                     </div>
