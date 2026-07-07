@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { UpdateTransactionDto } from './dto/update-transaction.dto'; // <-- Added import
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 
 @Controller('transactions')
@@ -10,25 +11,27 @@ export class TransactionsController {
 
   @Post()
   create(@Req() req, @Body() createTransactionDto: CreateTransactionDto) {
-    // Pass the authenticated user's ID
     return this.transactionsService.create(req.user.id, createTransactionDto);
   }
 
   @Get()
   findAll(@Req() req) {
-    // Fetch only this user's transaction history
     return this.transactionsService.findAll(req.user.id);
   }
 
   @Get(':id')
   findOne(@Req() req, @Param('id') id: string) {
-    // Validate ownership before fetching
     return this.transactionsService.findOne(req.user.id, id);
+  }
+
+  // NEW: The missing update route!
+  @Patch(':id')
+  update(@Req() req, @Param('id') id: string, @Body() updateTransactionDto: UpdateTransactionDto) {
+    return this.transactionsService.update(req.user.id, id, updateTransactionDto);
   }
 
   @Delete(':id')
   remove(@Req() req, @Param('id') id: string) {
-    // Safely delete and reverse the balance
     return this.transactionsService.remove(req.user.id, id);
   }
 }
