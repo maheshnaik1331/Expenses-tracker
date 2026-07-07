@@ -62,15 +62,15 @@ export const INDIAN_BANK_DIRECTORY: BankItem[] = [
     { id: "unity-small", name: "Unity Small Finance Bank Limited", domain: "unitybank.co.in", category: "SMALL_FINANCE" },
 
     // === PAYMENTS BANKS ===
-    { id: "airtel-payment", name: "Airtel Payments Bank Limited", domain: "airtel.in/bank", category: "PAYMENTS" },
+    { id: "airtel-payment", name: "Airtel Payments Bank Limited", domain: "airtelpayments.bank.in", category: "PAYMENTS" },
     { id: "ippb-payment", name: "India Post Payments Bank Limited", domain: "ippbonline.com", category: "PAYMENTS" },
     { id: "fino-payment", name: "Fino Payments Bank Limited", domain: "finobank.com", category: "PAYMENTS" },
-    { id: "jio-payment", name: "Jio Payments Bank Limited", domain: "jiobank.com", category: "PAYMENTS" },
-    { id: "nsdl-payment", name: "NSDL Payments Bank Limited", domain: "nsdlbank.com", category: "PAYMENTS" },
+    { id: "jio-payment", name: "Jio Payments Bank Limited", domain: "jiopayments.bank.in", category: "PAYMENTS" },
+    { id: "nsdl-payment", name: "NSDL Payments Bank Limited", domain: "nsdlpayments.bank.in", category: "PAYMENTS" },
     { id: "paytm-payment", name: "Paytm Payments Bank Limited", domain: "paytmbank.com", category: "PAYMENTS" },
 
     // === REGIONAL RURAL BANKS (RRBs) ===
-    { id: "ap-grameena", name: "Andhra Pradesh Grameena Bank", domain: "apgb.in", category: "RURAL" },
+    { id: "ap-grameena", name: "Andhra Pradesh Grameena Bank", domain: "apgb.bank.in", category: "RURAL" },
     { id: "assam-gramin", name: "Assam Gramin Bank", domain: "agvb.co.in", category: "RURAL" },
     { id: "arunachal-rural", name: "Arunachal Pradesh Rural Bank", domain: "apruralbank.co.in", category: "RURAL" },
     { id: "telangana-grameena", name: "Telangana Grameena Bank", domain: "tgbhyd.in", category: "RURAL" },
@@ -82,8 +82,8 @@ export const INDIAN_BANK_DIRECTORY: BankItem[] = [
     { id: "deutsche", name: "Deutsche Bank A.G.", domain: "deutschebank.co.in", category: "FOREIGN" },
     { id: "hsbc", name: "Hong Kong and Shanghai Banking Corporation Limited", domain: "hsbc.co.in", category: "FOREIGN" },
     { id: "jpmorgan", name: "J.P. Morgan Chase Bank N.A.", domain: "jpmorgan.com", category: "FOREIGN" },
-    { id: "standard-chartered", name: "Standard Chartered Bank", domain: "sc.com/in", category: "FOREIGN" },
-    { id: "dbs", name: "DBS Bank India Limited", domain: "dbs.com/in", category: "FOREIGN" },
+    { id: "standard-chartered", name: "Standard Chartered Bank", domain: "sc.bank.in", category: "FOREIGN" },
+    { id: "dbs", name: "DBS Bank India Limited", domain: "dbs.bank.in", category: "FOREIGN" },
 
     // === STATE CO-OPERATIVE BANKS ===
     { id: "ap-coop", name: "The Andhra Pradesh State Co-operative Bank Ltd.", domain: "apcob.org", category: "COOPERATIVE" },
