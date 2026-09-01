@@ -1,29 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/navbar";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { motion, AnimatePresence, Variants } from "framer-motion";
 import {
     Loader2, Plus, ArrowDownRight, ArrowUpRight,
     Scale, Calendar, CheckCircle2, MoreVertical, ShieldCheck,
     User, Building2, Percent, Wallet, Home, Briefcase, Coins,
-    Pencil, Trash2, Clock
+    Pencil, Trash2, Clock, X, ChevronDown, Check, ShieldAlert,
+    CheckSquare
 } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
+    DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
-import {
-    Dialog,
-    DialogContent,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
 
 const LOAN_TYPES = [
     { id: "PERSONAL", label: "Personal", icon: User },
@@ -32,19 +29,70 @@ const LOAN_TYPES = [
     { id: "GOLD", label: "Gold", icon: Coins },
 ];
 
-// Financial Calculation Engine
-const calculateFinancials = (principal: number | string, monthlyRate: number | string, startDate: string, dueDate: string | null) => {
+// --- ULTRA PREMIUM INTERACTIVE DROPDOWN ---
+const PremiumDropdown = ({ value, options, onChange, icon: Icon, label, placeholder = "Select..." }: any) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false);
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const selectedOption = options.find((o: any) => o.value === value);
+
+    return (
+        <div className="relative w-full" ref={dropdownRef}>
+            {label && <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">{label}</label>}
+            <div
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full bg-white border border-slate-300 hover:border-blue-400 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 cursor-pointer flex justify-between items-center transition-all shadow-sm focus-within:ring-4 focus-within:ring-blue-500/10"
+            >
+                <div className="flex items-center gap-3 truncate">
+                    {Icon && <Icon className="w-4 h-4 text-slate-400 font-bold" />}
+                    <span className="truncate">{selectedOption?.label || placeholder}</span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </div>
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                        className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden z-50"
+                    >
+                        <div className="max-h-56 overflow-y-auto p-1.5 scrollbar-thin scrollbar-thumb-slate-200">
+                            {options.map((opt: any) => (
+                                <div
+                                    key={opt.value}
+                                    onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                                    className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
+                                >
+                                    <span className={`text-sm ${value === opt.value ? 'font-bold text-blue-600' : 'font-semibold text-slate-700'}`}>{opt.label}</span>
+                                    {value === opt.value && <Check className="w-4 h-4 text-blue-600 font-bold" />}
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
+
+// Financial Calculation Engine (Now respects Cleared Dates)
+const calculateFinancials = (principal: number | string, monthlyRate: number | string, startDate: string, dueDate: string | null, clearedDate?: string | null) => {
     const p = parseFloat(principal.toString()) || 0;
     const r = parseFloat(monthlyRate.toString()) || 0;
 
-    if (!dueDate || r === 0 || p === 0) return { interest: 0, total: p };
-
     const start = new Date(startDate).getTime();
-    const end = new Date(dueDate).getTime();
+    // Stop calculating interest on the day it was cleared, or use current date if no due date
+    const end = clearedDate ? new Date(clearedDate).getTime() : (dueDate ? new Date(dueDate).getTime() : new Date().getTime());
 
-    if (end <= start) return { interest: 0, total: p }; // Prevent negative time
+    if (end <= start || r === 0 || p === 0) return { interest: 0, total: p };
 
-    // Calculate difference in days, convert to standard 30-day financial months
     const diffDays = (end - start) / (1000 * 60 * 60 * 24);
     const months = diffDays / 30;
 
@@ -58,10 +106,16 @@ export default function LoansPage() {
     const [loans, setLoans] = useState<any[]>([]);
     const [fetching, setFetching] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [editingId, setEditingId] = useState<string | null>(null);
 
+    // Modal UX State
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [loanToDelete, setLoanToDelete] = useState<string | null>(null);
+    const [loanToSettle, setLoanToSettle] = useState<any | null>(null);
+
+    // Filters
     const [filterMode, setFilterMode] = useState<"ALL" | "BORROWED" | "LENT">("ALL");
+    const [statusFilter, setStatusFilter] = useState<"ACTIVE" | "CLEARED">("ACTIVE");
 
     const [form, setForm] = useState({
         direction: "BORROWED" as "BORROWED" | "LENT",
@@ -70,7 +124,7 @@ export default function LoansPage() {
         principal: "",
         monthlyRate: "",
         startDate: new Date().toISOString().split('T')[0],
-        dueDate: "" // NEW FIELD
+        dueDate: ""
     });
 
     const fetchLoans = async () => {
@@ -100,6 +154,7 @@ export default function LoansPage() {
             dueDate: ""
         });
         setEditingId(null);
+        setIsFormOpen(true);
     };
 
     const handleEditClick = (loan: any) => {
@@ -113,30 +168,45 @@ export default function LoansPage() {
             dueDate: loan.dueDate ? new Date(loan.dueDate).toISOString().split('T')[0] : ""
         });
         setEditingId(loan.id);
-        setIsDialogOpen(true);
+        setIsFormOpen(true);
     };
 
-    const handleDeleteClick = async (id: string) => {
-        if (!window.confirm("Are you sure you want to delete this agreement? This action cannot be undone.")) return;
-
+    const confirmDeletion = async () => {
+        if (!loanToDelete) return;
         try {
-            toast.loading("Deleting record...", { id: "delete" });
-            await api.delete(`/loans/${id}`);
-            toast.success("Agreement deleted successfully.", { id: "delete" });
+            setSubmitting(true);
+            await api.delete(`/loans/${loanToDelete}`);
+            toast.success("Agreement purged from ledger.");
             fetchLoans();
         } catch (err) {
-            console.error("Deletion failed:", err);
-            toast.error("Failed to delete agreement.", { id: "delete" });
+            toast.error("Failed to delete agreement.");
+        } finally {
+            setSubmitting(false);
+            setLoanToDelete(null);
+        }
+    };
+
+    const confirmSettlement = async () => {
+        if (!loanToSettle) return;
+        try {
+            setSubmitting(true);
+            await api.patch(`/loans/${loanToSettle.id}/clear`);
+            toast.success(`${loanToSettle.counterparty} agreement marked as settled.`);
+            fetchLoans();
+        } catch (err) {
+            toast.error("Failed to update agreement status.");
+        } finally {
+            setSubmitting(false);
+            setLoanToSettle(null);
         }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.counterparty || !form.principal) return toast.error("Please provide a counterparty and principal amount.");
+        if (!form.counterparty || !form.principal) return toast.error("Counterparty and principal required.");
 
         try {
             setSubmitting(true);
-
             const payload = {
                 counterparty: form.counterparty,
                 direction: form.direction,
@@ -149,403 +219,369 @@ export default function LoansPage() {
 
             if (editingId) {
                 await api.patch(`/loans/${editingId}`, payload);
-                toast.success("Agreement updated successfully.");
+                toast.success("Credit instrument updated.");
             } else {
                 await api.post("/loans", payload);
-                toast.success(form.direction === "BORROWED" ? "Liability recorded." : "Receivable asset recorded.");
+                toast.success(form.direction === "BORROWED" ? "Liability instrument recorded." : "Receivable asset recorded.");
             }
 
-            setIsDialogOpen(false);
-            resetForm();
+            setIsFormOpen(false);
             fetchLoans();
         } catch (err) {
-            console.error("Submission failed:", err);
-            toast.error(editingId ? "Failed to update ledger transaction." : "Failed to commit ledger transaction.");
+            toast.error("Failed to commit ledger transaction.");
         } finally {
             setSubmitting(false);
         }
     };
 
-    const handleMarkCleared = async (id: string, counterparty: string) => {
-        if (!confirm(`Are you sure you want to mark the agreement with ${counterparty} as CLEARED? This will close the record.`)) return;
-        try {
-            toast.loading("Closing financial instrument...", { id: "clear" });
-            await api.patch(`/loans/${id}/clear`);
-            toast.success("Instrument successfully closed.", { id: "clear" });
-            fetchLoans();
-        } catch (err) {
-            toast.error("Failed to update status.", { id: "clear" });
-        }
-    };
-
-    const totalBorrowed = loans.filter(l => l.direction === "BORROWED").reduce((sum, l) => sum + calculateFinancials(l.principal, l.monthlyRate, l.startDate, l.dueDate).total, 0);
-    const totalLent = loans.filter(l => l.direction === "LENT").reduce((sum, l) => sum + calculateFinancials(l.principal, l.monthlyRate, l.startDate, l.dueDate).total, 0);
+    // Calculate active KPIs only
+    const activeLoans = loans.filter(l => l.status === "ACTIVE");
+    const totalBorrowed = activeLoans.filter(l => l.direction === "BORROWED").reduce((sum, l) => sum + calculateFinancials(l.principal, l.monthlyRate, l.startDate, l.dueDate).total, 0);
+    const totalLent = activeLoans.filter(l => l.direction === "LENT").reduce((sum, l) => sum + calculateFinancials(l.principal, l.monthlyRate, l.startDate, l.dueDate).total, 0);
     const netExposure = totalLent - totalBorrowed;
-    const filteredLoans = loans.filter(l => filterMode === "ALL" || l.direction === filterMode);
 
-    // Live preview for the form
+    const filteredLoans = loans.filter(l => (filterMode === "ALL" || l.direction === filterMode) && l.status === statusFilter);
+
     const formPreview = calculateFinancials(form.principal, form.monthlyRate, form.startDate, form.dueDate);
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]"><Loader2 className="h-8 w-8 animate-spin text-zinc-900" /></div>;
+    const fadeUp: Variants = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { type: "spring", damping: 25 } } };
+    const modalVariants: Variants = {
+        hidden: { opacity: 0, scale: 0.95, y: 20 },
+        visible: { opacity: 1, scale: 1, y: 0, transition: { type: "spring", damping: 25, stiffness: 400 } },
+        exit: { opacity: 0, scale: 0.95, y: 20, transition: { duration: 0.2 } }
+    };
+
+    if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]"><Loader2 className="h-8 w-8 animate-spin text-blue-600 font-bold" /></div>;
 
     return (
         <ProtectedRoute>
-            <div className="min-h-screen bg-[#F0F2F5] flex flex-col font-sans">
+            <div className="min-h-screen bg-[#F8F9FA] flex flex-col font-sans text-slate-900 antialiased selection:bg-blue-100 relative">
                 <Navbar />
 
-                {/* Global CSS for the modern Date Picker hack */}
                 <style dangerouslySetInnerHTML={{
                     __html: `
         .modern-date-input::-webkit-calendar-picker-indicator {
-          background: transparent;
-          bottom: 0;
-          color: transparent;
-          cursor: pointer;
-          height: auto;
-          left: 0;
-          position: absolute;
-          right: 0;
-          top: 0;
-          width: auto;
+          background: transparent; bottom: 0; color: transparent; cursor: pointer;
+          height: auto; left: 0; position: absolute; right: 0; top: 0; width: auto;
         }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
 
-                <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6 sm:py-10">
+                <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-10 relative">
 
                     {/* Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 mb-8">
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 border-b border-slate-200/60 pb-8">
                         <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 tracking-tight">Credit Matrix</h1>
-                            <p className="text-zinc-500 text-xs sm:text-sm mt-1">Manage institutional liabilities and personal receivables.</p>
+                            <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Credit Matrix</h1>
+                            <p className="text-slate-500 text-sm mt-2 font-semibold">Manage active liabilities, receivables, and settled agreements.</p>
                         </div>
 
-                        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
-                            <DialogTrigger className="flex items-center justify-center gap-2 bg-zinc-900 text-white font-bold text-sm px-6 py-3.5 rounded-xl shadow-lg shadow-zinc-900/20 hover:bg-zinc-800 transition-all active:scale-95 w-full sm:w-auto">
-                                <Plus className="w-4 h-4" /> Log Agreement
-                            </DialogTrigger>
+                        <button onClick={resetForm} className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold text-sm px-6 py-3.5 rounded-xl shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95 w-full sm:w-auto">
+                            <Plus className="w-4 h-4 font-bold" /> Log Agreement
+                        </button>
+                    </motion.div>
 
-                            {/* APP-LIKE MODAL DESIGN */}
-                            <DialogContent className="bg-white p-0 rounded-t-[32px] sm:rounded-[32px] rounded-b-none sm:rounded-b-[32px] max-w-2xl w-full shadow-2xl border-0 overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85vh] mt-auto sm:mt-0 !mb-0 sm:!mb-auto align-bottom sm:align-middle">
+                    {/* Premium KPI Strip (Active Exposure Only) */}
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
+                        <div className="bg-white p-6 rounded-[1.5rem] shadow-sm border border-slate-200/60 flex items-center gap-5 hover:shadow-md transition-all group">
+                            <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl shrink-0 group-hover:scale-105 transition-transform"><ArrowDownRight className="w-6 h-6 font-bold" /></div>
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1 truncate">Active Liabilities</p>
+                                <h2 className="text-2xl font-bold text-rose-600 truncate font-mono">₹{totalBorrowed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
+                            </div>
+                        </div>
 
-                                {/* Sticky Header */}
-                                <div className="bg-slate-50 border-b border-slate-100 p-5 sm:p-6 flex items-center gap-4 shrink-0">
-                                    <div className="p-2.5 sm:p-3 bg-white border border-slate-200 rounded-2xl shadow-sm shrink-0">
-                                        <Scale className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
-                                    </div>
-                                    <div>
-                                        <DialogTitle className="text-lg sm:text-xl font-bold text-zinc-900">
-                                            {editingId ? "Update Credit Instrument" : "Establish Credit Instrument"}
-                                        </DialogTitle>
-                                        <p className="text-[10px] sm:text-xs text-zinc-500 font-medium mt-0.5 uppercase tracking-wider">
-                                            {editingId ? "Modify details" : "Deploy Liability or Asset"}
-                                        </p>
-                                    </div>
-                                </div>
+                        <div className="bg-white p-6 rounded-[1.5rem] shadow-sm border border-slate-200/60 flex items-center gap-5 hover:shadow-md transition-all group">
+                            <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-2xl shrink-0 group-hover:scale-105 transition-transform"><ArrowUpRight className="w-6 h-6 font-bold" /></div>
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1 truncate">Active Receivables</p>
+                                <h2 className="text-2xl font-bold text-emerald-600 truncate font-mono">₹{totalLent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
+                            </div>
+                        </div>
 
-                                {/* Scrollable Form Body */}
-                                <div className="overflow-y-auto flex-1 p-5 sm:p-8">
-                                    <form id="loan-form" onSubmit={handleSubmit} className="space-y-8">
+                        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-[1.5rem] shadow-md border border-blue-500 flex items-center gap-5 text-white">
+                            <div className="p-4 bg-white/10 rounded-2xl shrink-0"><Wallet className="w-6 h-6 font-bold text-white" /></div>
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-bold text-blue-100 uppercase tracking-widest mb-1 truncate">Net Exposure</p>
+                                <h2 className="text-2xl font-bold truncate font-mono">
+                                    {netExposure < 0 ? "-" : ""}₹{Math.abs(netExposure).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                                </h2>
+                            </div>
+                        </div>
+                    </motion.div>
 
-                                        {/* UX Toggle */}
-                                        <div>
-                                            <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">Direction of Capital</label>
-                                            <div className="flex p-1.5 bg-slate-100 rounded-2xl shadow-inner">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setForm({ ...form, direction: "BORROWED" })}
-                                                    className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 ${form.direction === "BORROWED" ? "bg-white text-rose-600 shadow-md border border-slate-200/60 scale-[1.02]" : "text-zinc-500 hover:text-zinc-700"}`}
-                                                >
-                                                    <ArrowDownRight className={`w-4 h-4 ${form.direction === "BORROWED" ? "text-rose-500" : "text-zinc-400"}`} />
-                                                    I Borrowed Money
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setForm({ ...form, direction: "LENT" })}
-                                                    className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 ${form.direction === "LENT" ? "bg-white text-emerald-600 shadow-md border border-slate-200/60 scale-[1.02]" : "text-zinc-500 hover:text-zinc-700"}`}
-                                                >
-                                                    <ArrowUpRight className={`w-4 h-4 ${form.direction === "LENT" ? "text-emerald-500" : "text-zinc-400"}`} />
-                                                    I Lent Money
-                                                </button>
+                    {/* Dual Action Filters */}
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row justify-between gap-4 mb-6">
+                        <div className="flex p-1.5 bg-white border border-slate-200 rounded-2xl shadow-sm w-full md:w-auto">
+                            <button onClick={() => setStatusFilter("ACTIVE")} className={`flex-1 px-8 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all ${statusFilter === "ACTIVE" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>Active</button>
+                            <button onClick={() => setStatusFilter("CLEARED")} className={`flex-1 px-8 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all ${statusFilter === "CLEARED" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>Settled</button>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                            {["ALL", "BORROWED", "LENT"].map((mode) => (
+                                <button key={mode} onClick={() => setFilterMode(mode as any)} className={`px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${filterMode === mode ? "bg-white text-blue-600 shadow-sm border border-slate-200" : "bg-transparent text-slate-500 hover:text-slate-900 border border-transparent"}`}>
+                                    {mode === "ALL" ? "All Types" : mode === "BORROWED" ? "Liabilities" : "Receivables"}
+                                </button>
+                            ))}
+                        </div>
+                    </motion.div>
+
+                    {/* Dynamic Card Grid */}
+                    {fetching ? (
+                        <div className="py-24 flex justify-center"><Loader2 className="w-10 h-10 animate-spin text-blue-600 font-bold" /></div>
+                    ) : filteredLoans.length === 0 ? (
+                        <motion.div initial="hidden" animate="show" variants={fadeUp} className="bg-white border border-slate-200 rounded-[2rem] p-16 text-center max-w-xl mx-auto shadow-sm mt-8">
+                            <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 mx-auto mb-6 border border-slate-100">
+                                <Scale className="w-8 h-8 font-bold" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 tracking-tight">No {statusFilter === "ACTIVE" ? "Active" : "Settled"} Agreements</h3>
+                            <p className="text-slate-500 text-sm mt-3 leading-relaxed font-semibold">
+                                There are no {filterMode !== "ALL" ? filterMode.toLowerCase() : ""} financial instruments matching this criteria.
+                            </p>
+                        </motion.div>
+                    ) : (
+                        <motion.div initial="hidden" animate="show" variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } }} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                            {filteredLoans.map((loan) => {
+                                const isBorrowed = loan.direction === "BORROWED";
+                                const isCleared = loan.status === "CLEARED";
+                                const typeIcon = LOAN_TYPES.find(t => t.id === loan.type)?.icon || Building2;
+                                const Icon = typeIcon;
+
+                                const metrics = calculateFinancials(loan.principal, loan.monthlyRate, loan.startDate, loan.dueDate, loan.clearedDate);
+
+                                return (
+                                    <motion.div key={loan.id} variants={fadeUp} whileHover={{ y: -6, scale: 1.01 }} transition={{ type: "spring", stiffness: 400, damping: 30 }} className={`bg-white rounded-[2rem] shadow-sm border hover:shadow-xl hover:border-slate-300 transition-all duration-300 flex flex-col relative group overflow-hidden ${isCleared ? 'opacity-80 grayscale-[0.2]' : ''}`}>
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/60 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none transform -translate-x-full group-hover:translate-x-full ease-in-out z-20"></div>
+
+                                        <div className="p-6 border-b border-slate-100 flex justify-between items-start gap-4 relative z-10">
+                                            <div className="flex items-center gap-4 min-w-0">
+                                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm ${isCleared ? 'bg-slate-50 border-slate-200 text-slate-500' : isBorrowed ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600'}`}>
+                                                    <Icon className="w-7 h-7 font-bold" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h3 className="text-lg font-bold text-slate-900 truncate tracking-tight">{loan.counterparty}</h3>
+                                                    <div className={`text-[10px] font-bold uppercase tracking-widest mt-1.5 flex items-center gap-1.5 ${isCleared ? 'text-slate-500' : isBorrowed ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                        {isBorrowed ? <ArrowDownRight className="w-3.5 h-3.5 font-bold" /> : <ArrowUpRight className="w-3.5 h-3.5 font-bold" />}
+                                                        {isCleared ? "Settled Agreement" : isBorrowed ? "Liability" : "Receivable"}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger className="p-2.5 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-700 transition-all focus:outline-none">
+                                                    <MoreVertical className="w-5 h-5 font-bold" />
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="bg-white border border-slate-200 w-48 p-2 rounded-2xl shadow-xl mt-2">
+                                                    <DropdownMenuItem onClick={() => handleEditClick(loan)} className="flex items-center gap-3 font-bold text-sm text-blue-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-blue-50 focus:bg-blue-50">
+                                                        <Pencil className="w-4 h-4 font-bold" /> Edit Config
+                                                    </DropdownMenuItem>
+                                                    {!isCleared && (
+                                                        <>
+                                                            <DropdownMenuSeparator className="bg-slate-100 mx-2 my-1" />
+                                                            <DropdownMenuItem onClick={() => setLoanToSettle(loan)} className="flex items-center gap-3 font-bold text-sm text-emerald-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50">
+                                                                <CheckCircle2 className="w-4 h-4 font-bold" /> Mark Settled
+                                                            </DropdownMenuItem>
+                                                        </>
+                                                    )}
+                                                    <DropdownMenuSeparator className="bg-slate-100 mx-2 my-1" />
+                                                    <DropdownMenuItem onClick={() => setLoanToDelete(loan.id)} className="flex items-center gap-3 font-bold text-sm text-rose-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-rose-50 focus:bg-rose-50">
+                                                        <Trash2 className="w-4 h-4 font-bold" /> Purge Record
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
+
+                                        <div className="p-6 flex-1 relative z-10">
+                                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">{isCleared ? "Final Settled Value" : "Projected Obligation"}</span>
+                                            <span className={`text-4xl font-bold block tracking-tight font-mono truncate ${isCleared ? 'text-slate-700' : 'text-slate-900'}`}>
+                                                ₹{metrics.total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                                            </span>
+
+                                            <div className="mt-6 p-4 bg-slate-50 border border-slate-200/60 rounded-xl flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Principal</span>
+                                                    <span className="text-sm font-bold text-slate-700 font-mono">₹{loan.principal.toLocaleString("en-IN")}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Accrued Interest</span>
+                                                    <span className={`text-sm font-bold font-mono ${isCleared ? 'text-slate-500' : 'text-rose-500'}`}>+₹{metrics.interest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-6 flex items-center justify-between">
+                                                <div>
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Interest Rate</span>
+                                                    <span className="text-sm font-bold text-slate-700 font-mono">{loan.monthlyRate}% / mo</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Category</span>
+                                                    <span className="text-sm font-bold text-slate-700">{loan.type}</span>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        {/* Interactive Icon Grid */}
+                                        <div className="mt-auto flex divide-x divide-slate-100 border-t border-slate-100 relative z-10">
+                                            <div className="flex-1 p-5 bg-slate-50/80 rounded-bl-[2rem]">
+                                                <div className="flex items-center gap-1.5 text-slate-400 mb-1.5">
+                                                    <Calendar className="w-3.5 h-3.5 font-bold" />
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest">Originated</span>
+                                                </div>
+                                                <span className="text-xs font-bold text-slate-700 block truncate">
+                                                    {new Date(loan.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                </span>
+                                            </div>
+                                            <div className={`flex-1 p-5 rounded-br-[2rem] ${isCleared ? 'bg-slate-100' : 'bg-blue-50/50'}`}>
+                                                <div className={`flex items-center gap-1.5 mb-1.5 ${isCleared ? 'text-slate-500' : 'text-blue-500'}`}>
+                                                    {isCleared ? <CheckSquare className="w-3.5 h-3.5 font-bold" /> : <Clock className="w-3.5 h-3.5 font-bold" />}
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest">{isCleared ? "Cleared On" : "Target Payoff"}</span>
+                                                </div>
+                                                <span className={`text-xs font-bold block truncate ${isCleared ? 'text-slate-700' : 'text-blue-700'}`}>
+                                                    {isCleared ? new Date(loan.clearedDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : loan.dueDate ? new Date(loan.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : "Not Set"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </motion.div>
+                    )}
+                </main>
+
+                {/* --- GLASSMORPHISM SETTLE MODAL --- */}
+                <AnimatePresence>
+                    {loanToSettle && (
+                        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => !submitting && setLoanToSettle(null)} />
+                            <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] p-8 max-w-md w-full shadow-2xl">
+                                <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-6 border border-emerald-100">
+                                    <CheckCircle2 className="w-6 h-6 text-emerald-600 font-bold" />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 mb-2">Mark Agreement Settled?</h3>
+                                <p className="text-sm font-semibold text-slate-500 mb-8">This will lock the instrument, freeze all interest calculations at today's date, and move it to your settled archives.</p>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setLoanToSettle(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold py-3 rounded-xl transition-colors">Cancel</button>
+                                    <button onClick={confirmSettlement} disabled={submitting} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold py-3 rounded-xl flex justify-center items-center shadow-md disabled:opacity-50">
+                                        {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Settlement"}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* --- GLASSMORPHISM DELETE MODAL --- */}
+                <AnimatePresence>
+                    {loanToDelete && (
+                        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => !submitting && setLoanToDelete(null)} />
+                            <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] p-8 max-w-md w-full shadow-2xl">
+                                <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-6 border border-rose-100">
+                                    <ShieldAlert className="w-6 h-6 text-rose-600 font-bold" />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 mb-2">Purge Agreement?</h3>
+                                <p className="text-sm font-semibold text-slate-500 mb-8">This will completely erase the contract from your matrix. This action cannot be reversed.</p>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setLoanToDelete(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold py-3 rounded-xl transition-colors">Cancel</button>
+                                    <button onClick={confirmDeletion} disabled={submitting} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold py-3 rounded-xl flex justify-center items-center shadow-md disabled:opacity-50">
+                                        {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* --- GLASSMORPHISM FORM MODAL --- */}
+                <AnimatePresence>
+                    {isFormOpen && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setIsFormOpen(false)} />
+                            <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] w-full max-w-xl shadow-2xl flex flex-col max-h-[90vh]">
+
+                                <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 bg-slate-50/80 rounded-t-[2rem]">
+                                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">{editingId ? "Update Instrument" : "Establish Instrument"}</h2>
+                                    <button onClick={() => setIsFormOpen(false)} className="p-2 text-slate-400 hover:text-slate-700 bg-white border border-slate-200 rounded-full shadow-sm"><X className="w-4 h-4 font-bold" /></button>
+                                </div>
+
+                                <div className="overflow-y-auto p-6 sm:p-8">
+                                    <form id="loanForm" onSubmit={handleSubmit} className="space-y-6">
+
+                                        <div className="flex p-1.5 bg-slate-100 border border-slate-200 rounded-xl">
+                                            <button type="button" onClick={() => setForm({ ...form, direction: "BORROWED" })} className={`flex-1 py-2.5 flex items-center justify-center gap-2 text-[11px] font-extrabold uppercase tracking-wider rounded-lg transition-all ${form.direction === "BORROWED" ? "bg-white text-rose-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-700"}`}>
+                                                <ArrowDownRight className="w-3.5 h-3.5 font-bold" /> Liability
+                                            </button>
+                                            <button type="button" onClick={() => setForm({ ...form, direction: "LENT" })} className={`flex-1 py-2.5 flex items-center justify-center gap-2 text-[11px] font-extrabold uppercase tracking-wider rounded-lg transition-all ${form.direction === "LENT" ? "bg-white text-emerald-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-700"}`}>
+                                                <ArrowUpRight className="w-3.5 h-3.5 font-bold" /> Asset
+                                            </button>
+                                        </div>
+
                                         <div>
-                                            <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">Instrument Category</label>
+                                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Instrument Category</label>
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                                 {LOAN_TYPES.map((type) => {
                                                     const Icon = type.icon;
                                                     const isSelected = form.type === type.id;
                                                     return (
-                                                        <button
-                                                            key={type.id}
-                                                            type="button"
-                                                            onClick={() => setForm({ ...form, type: type.id })}
-                                                            className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 ${isSelected
-                                                                ? "border-zinc-900 bg-zinc-900 text-white shadow-lg scale-[1.03]"
-                                                                : "border-slate-200 bg-white text-zinc-500 hover:border-zinc-400 hover:bg-slate-50 hover:shadow-sm"
-                                                                }`}
-                                                        >
-                                                            <Icon className={`w-5 h-5 sm:w-6 sm:h-6 mb-2 sm:mb-3 ${isSelected ? "text-white" : "text-zinc-400"}`} />
-                                                            <span className={`text-[10px] sm:text-xs font-bold tracking-wide uppercase ${isSelected ? "text-white" : "text-zinc-700"}`}>
-                                                                {type.label}
-                                                            </span>
+                                                        <button key={type.id} type="button" onClick={() => setForm({ ...form, type: type.id })} className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all duration-200 ${isSelected ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm" : "border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:bg-slate-50"}`}>
+                                                            <Icon className={`w-5 h-5 mb-2 font-bold ${isSelected ? "text-blue-600" : "text-slate-400"}`} />
+                                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? "text-blue-700" : "text-slate-500"}`}>{type.label}</span>
                                                         </button>
                                                     );
                                                 })}
                                             </div>
                                         </div>
 
-                                        <div className="space-y-6">
-                                            <div>
-                                                <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Counterparty Entity</label>
-                                                <input
-                                                    type="text" required placeholder="e.g., HDFC Bank, John Doe"
-                                                    value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all shadow-inner placeholder:font-medium placeholder:text-zinc-400"
-                                                />
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Principal Amount (₹)</label>
-                                                    <input
-                                                        type="number" step="0.01" required placeholder="0.00"
-                                                        value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })}
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-lg font-bold font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all shadow-inner"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Interest / mo</label>
-                                                    <div className="relative">
-                                                        <Percent className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                                                        <input
-                                                            type="number" step="0.01" placeholder="0.0"
-                                                            value={form.monthlyRate} onChange={(e) => setForm({ ...form, monthlyRate: e.target.value })}
-                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-3.5 text-lg font-bold font-mono text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all shadow-inner"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Start Date</label>
-                                                    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-inner focus-within:ring-2 focus-within:ring-zinc-900 transition-all">
-                                                        <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
-                                                        <input
-                                                            type="date" required
-                                                            value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                                                            className="w-full bg-transparent pl-10 pr-4 py-3.5 text-sm font-bold text-zinc-900 outline-none modern-date-input"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="text-[10px] sm:text-[11px] font-bold text-emerald-500 uppercase tracking-widest block mb-2">Target Payoff Date</label>
-                                                    <div className="relative overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/50 shadow-inner focus-within:ring-2 focus-within:ring-emerald-600 transition-all">
-                                                        <Clock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-600 pointer-events-none" />
-                                                        <input
-                                                            type="date"
-                                                            value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                                                            className="w-full bg-transparent pl-10 pr-4 py-3.5 text-sm font-bold text-emerald-900 outline-none modern-date-input"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Live Projection Box */}
-                                            {form.dueDate && form.monthlyRate && form.principal && (
-                                                <div className="p-4 bg-zinc-900 rounded-2xl border border-zinc-800 text-white flex justify-between items-center shadow-lg">
-                                                    <div>
-                                                        <p className="text-[10px] uppercase tracking-widest font-bold text-zinc-400 mb-1">Projected Total Amount</p>
-                                                        <p className="text-2xl font-bold tracking-tight">₹{formPreview.total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-[10px] uppercase tracking-widest font-bold text-zinc-400 mb-1">Est. Interest</p>
-                                                        <p className="text-sm font-bold text-rose-400">+₹{formPreview.interest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
-                                                    </div>
-                                                </div>
-                                            )}
+                                        <div>
+                                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Counterparty Entity</label>
+                                            <input type="text" required placeholder="e.g., HDFC Bank, John Doe" value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm placeholder:font-semibold placeholder:text-slate-400" />
                                         </div>
+
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <div className="col-span-2 sm:col-span-1">
+                                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Principal Amount (₹)</label>
+                                                <input type="number" step="0.01" required placeholder="0.00" value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })} className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm placeholder:font-semibold placeholder:text-slate-400" />
+                                            </div>
+                                            <div className="col-span-2 sm:col-span-1">
+                                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Interest Rate (% / mo)</label>
+                                                <div className="relative">
+                                                    <Percent className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold" />
+                                                    <input type="number" step="0.01" placeholder="0.0" value={form.monthlyRate} onChange={(e) => setForm({ ...form, monthlyRate: e.target.value })} className="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-3.5 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm placeholder:font-semibold placeholder:text-slate-400" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-6 border-t border-slate-100 pt-6">
+                                            <div className="col-span-2 sm:col-span-1">
+                                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Origination Date</label>
+                                                <div className="relative w-full">
+                                                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
+                                                    <input type="date" required value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm modern-date-input cursor-pointer" />
+                                                </div>
+                                            </div>
+                                            <div className="col-span-2 sm:col-span-1">
+                                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Target Payoff Date</label>
+                                                <div className="relative w-full">
+                                                    <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
+                                                    <input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm modern-date-input cursor-pointer" />
+                                                </div>
+                                            </div>
+                                        </div>
+
                                     </form>
                                 </div>
 
-                                {/* Sticky Action Footer */}
-                                <div className="p-4 sm:p-6 bg-white border-t border-slate-100 flex justify-end gap-3 shrink-0">
-                                    <button type="button" onClick={() => setIsDialogOpen(false)} className="bg-white hover:bg-slate-50 border border-slate-200 text-zinc-700 text-sm font-bold px-6 py-3.5 rounded-xl transition-all shadow-sm w-full sm:w-auto">
-                                        Cancel
-                                    </button>
-                                    <button form="loan-form" type="submit" disabled={submitting} className="bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-bold px-8 py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-zinc-900/20 disabled:opacity-50 w-full sm:w-auto">
-                                        {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingId ? <Pencil className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />)}
-                                        {editingId ? "Update Agreement" : "Lock Agreement"}
+                                <div className="p-6 border-t border-slate-100 bg-slate-50/80 rounded-b-[2rem] flex justify-end gap-3 shrink-0">
+                                    <button onClick={() => setIsFormOpen(false)} className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-sm">Cancel</button>
+                                    <button form="loanForm" type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-8 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 shadow-md shadow-blue-600/20">
+                                        {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : editingId ? <Pencil className="w-4 h-4 font-bold" /> : <ShieldCheck className="w-4 h-4 font-bold" />}
+                                        {editingId ? "Update Instrument" : "Lock Agreement"}
                                     </button>
                                 </div>
-                            </DialogContent>
-                        </Dialog>
-                    </div>
-
-                    {/* Premium KPI Strip */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
-                        <div className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-rose-100 flex items-center gap-4 sm:gap-5 hover:shadow-md transition-all">
-                            <div className="p-3 sm:p-4 bg-rose-50 text-rose-600 rounded-2xl shrink-0"><ArrowDownRight className="w-5 h-5 sm:w-6 sm:h-6" /></div>
-                            <div className="min-w-0">
-                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Projected Liabilities</p>
-                                <h2 className="text-xl sm:text-2xl font-bold text-rose-600 truncate">₹{totalBorrowed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
-                            </div>
-                        </div>
-
-                        <div className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-emerald-100 flex items-center gap-4 sm:gap-5 hover:shadow-md transition-all">
-                            <div className="p-3 sm:p-4 bg-emerald-50 text-emerald-600 rounded-2xl shrink-0"><ArrowUpRight className="w-5 h-5 sm:w-6 sm:h-6" /></div>
-                            <div className="min-w-0">
-                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Projected Assets</p>
-                                <h2 className="text-xl sm:text-2xl font-bold text-emerald-600 truncate">₹{totalLent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
-                            </div>
-                        </div>
-
-                        <div className="bg-zinc-900 p-5 sm:p-6 rounded-3xl shadow-lg border border-zinc-800 flex items-center gap-4 sm:gap-5 text-white transform hover:-translate-y-1 transition-all">
-                            <div className="p-3 sm:p-4 bg-zinc-800 rounded-2xl shrink-0"><Wallet className="w-5 h-5 sm:w-6 sm:h-6" /></div>
-                            <div className="min-w-0">
-                                <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1 truncate">Total Net Exposure</p>
-                                <h2 className="text-xl sm:text-2xl font-bold truncate">
-                                    {netExposure < 0 ? "-" : ""}₹{Math.abs(netExposure).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                                </h2>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Horizontal Scroll Filters */}
-                    <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
-                        {["ALL", "BORROWED", "LENT"].map((mode) => (
-                            <button
-                                key={mode}
-                                onClick={() => setFilterMode(mode as any)}
-                                className={`px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${filterMode === mode
-                                    ? "bg-white text-zinc-900 shadow-sm border border-slate-200"
-                                    : "bg-transparent text-zinc-500 hover:text-zinc-900 hover:bg-white border border-transparent"
-                                    }`}
-                            >
-                                {mode === "ALL" ? "All Agreements" : mode === "BORROWED" ? "My Liabilities" : "My Receivables"}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Dynamic Card Grid */}
-                    {fetching ? (
-                        <div className="py-24 flex justify-center"><Loader2 className="w-8 h-8 sm:w-10 sm:h-10 animate-spin text-zinc-400" /></div>
-                    ) : filteredLoans.length === 0 ? (
-                        <div className="bg-white border border-slate-200 rounded-3xl p-10 sm:p-16 text-center max-w-xl mx-auto shadow-sm mt-4 sm:mt-8">
-                            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-slate-50 flex items-center justify-center text-zinc-400 mx-auto mb-4 sm:mb-6 border border-slate-100">
-                                <Scale className="w-8 h-8 sm:w-10 sm:h-10" />
-                            </div>
-                            <h3 className="text-xl sm:text-2xl font-bold text-zinc-900">No Active Agreements</h3>
-                            <p className="text-zinc-500 text-xs sm:text-sm mt-2 sm:mt-3 leading-relaxed max-w-sm mx-auto">
-                                You do not have any active financial liabilities or receivables matching this filter.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
-                            {filteredLoans.map((loan) => {
-                                const isBorrowed = loan.direction === "BORROWED";
-                                const typeIcon = LOAN_TYPES.find(t => t.id === loan.type)?.icon || Building2;
-                                const Icon = typeIcon;
-
-                                // Process financials for this specific card
-                                const metrics = calculateFinancials(loan.principal, loan.monthlyRate, loan.startDate, loan.dueDate);
-
-                                return (
-                                    <div key={loan.id} className={`bg-white rounded-[24px] shadow-sm border hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col relative group ${isBorrowed ? 'border-rose-100/50' : 'border-emerald-100/50'}`}>
-
-                                        <div className="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-start gap-4">
-                                            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                                                <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-inner border ${isBorrowed ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600'}`}>
-                                                    <Icon className="w-6 h-6 sm:w-7 sm:h-7" />
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <h3 className="text-base sm:text-lg font-bold text-zinc-900 truncate tracking-tight">{loan.counterparty}</h3>
-                                                    <div className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest mt-1 flex items-center gap-1.5 ${isBorrowed ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                                        {isBorrowed ? <ArrowDownRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <ArrowUpRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
-                                                        {isBorrowed ? "To Be Repaid" : "To Be Collected"}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger className="p-2 sm:p-2.5 rounded-xl hover:bg-slate-50 border border-transparent text-zinc-400 hover:text-zinc-900 transition-all focus:outline-none">
-                                                    <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5" />
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="bg-white w-48 p-2 rounded-2xl shadow-xl border border-slate-100 mt-2">
-                                                    <DropdownMenuItem onClick={() => handleEditClick(loan)} className="flex items-center gap-3 font-bold text-sm text-blue-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-blue-50">
-                                                        <Pencil className="w-4 h-4" /> Edit Record
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => handleMarkCleared(loan.id, loan.counterparty)} className="flex items-center gap-3 font-bold text-sm text-emerald-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-emerald-50">
-                                                        <CheckCircle2 className="w-4 h-4" /> Mark as Settled
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => handleDeleteClick(loan.id)} className="flex items-center gap-3 font-bold text-sm text-rose-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-rose-50">
-                                                        <Trash2 className="w-4 h-4" /> Delete Record
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </div>
-
-                                        <div className="p-5 sm:p-6 flex-1">
-                                            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Total Projected Value</span>
-                                            <span className="text-3xl sm:text-4xl font-bold text-zinc-900 block tracking-tight truncate">
-                                                ₹{metrics.total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                                            </span>
-
-                                            {/* Sub-breakdown box */}
-                                            <div className="mt-5 p-3 sm:p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
-                                                <div>
-                                                    <span className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-0.5">Principal</span>
-                                                    <span className="text-sm font-bold text-zinc-700">₹{loan.principal.toLocaleString("en-IN")}</span>
-                                                </div>
-                                                <div className="text-right">
-                                                    <span className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-0.5">Est. Interest</span>
-                                                    <span className="text-sm font-bold text-rose-500">+₹{metrics.interest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-5 flex items-center justify-between">
-                                                <div>
-                                                    <span className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Interest</span>
-                                                    <span className="text-xs sm:text-sm font-bold text-zinc-700 font-mono">{loan.monthlyRate}% / mo</span>
-                                                </div>
-                                                <div className="text-right">
-                                                    <span className="text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Category</span>
-                                                    <span className="text-xs sm:text-sm font-bold text-zinc-700">{loan.type}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-auto flex divide-x divide-slate-100 border-t border-slate-100">
-                                            <div className="flex-1 p-4 bg-slate-50/50 rounded-bl-[24px]">
-                                                <div className="flex items-center gap-1.5 text-zinc-400 mb-1">
-                                                    <Calendar className="w-3 h-3" />
-                                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest">Originated</span>
-                                                </div>
-                                                <span className="text-xs font-bold text-zinc-700 block truncate">
-                                                    {new Date(loan.startDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
-                                                </span>
-                                            </div>
-                                            <div className="flex-1 p-4 bg-emerald-50/30 rounded-br-[24px]">
-                                                <div className="flex items-center gap-1.5 text-emerald-500 mb-1">
-                                                    <Clock className="w-3 h-3" />
-                                                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest">Target Payoff</span>
-                                                </div>
-                                                <span className="text-xs font-bold text-emerald-700 block truncate">
-                                                    {loan.dueDate ? new Date(loan.dueDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' }) : "Not Set"}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                );
-                            })}
+                            </motion.div>
                         </div>
                     )}
-                </main>
+                </AnimatePresence>
+
             </div>
         </ProtectedRoute>
     );

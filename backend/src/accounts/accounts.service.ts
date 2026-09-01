@@ -1,53 +1,67 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
+import { AccountType } from '@prisma/client';
 
 @Injectable()
 export class AccountsService {
   constructor(private prisma: PrismaService) { }
 
   async create(userId: string, data: CreateAccountDto) {
+    const isLiquid = data.type === AccountType.CASH || data.type === AccountType.BANK;
+
     return this.prisma.account.create({
       data: {
         name: data.name,
         type: data.type,
-        currentBalance: data.currentBalance,
-
-        // NEW: Map the incoming data to the database columns
+        currentBalance: data.currentBalance || 0,
         accountNumber: data.accountNumber || null,
         ifscCode: data.ifscCode || null,
         branch: data.branch || null,
-
-        userId: userId,
+        isLiquid,
+        userId,
       },
     });
   }
 
   async findAll(userId: string) {
     return this.prisma.account.findMany({
-      where: { userId: userId },
+      where: { userId },
       orderBy: { createdAt: 'desc' },
     });
   }
-  // Securely fetch a single account by ID
-  async findOne(userId: string, accountId: string) {
-    const account = await this.prisma.account.findFirst({
-      where: {
-        id: accountId,
-        userId: userId // CRITICAL: Ensures users can only see their own accounts
-      },
+
+  // Get aggregated balances (Liquid Cash vs Net Position)
+  async getAccountSummary(userId: string) {
+    const accounts = await this.prisma.account.findMany({
+      where: { userId, status: 'ACTIVE' },
     });
 
-    if (!account) {
-      throw new NotFoundException('Account not found or access denied.');
-    }
+    const totalBalance = accounts.reduce((acc, curr) => acc + curr.currentBalance, 0);
+    const liquidCash = accounts
+      .filter((a) => a.isLiquid || a.type === AccountType.CASH)
+      .reduce((acc, curr) => acc + curr.currentBalance, 0);
 
+    return {
+      totalAccounts: accounts.length,
+      totalBalance,
+      liquidCash,
+      accounts,
+    };
+  }
+
+  async findOne(userId: string, accountId: string) {
+    const account = await this.prisma.account.findFirst({
+      where: { id: accountId, userId },
+    });
+
+    if (!account) throw new NotFoundException('Account not found');
     return account;
   }
-  // Ensure updates also save the new fields
+
   async update(userId: string, accountId: string, data: Partial<CreateAccountDto>) {
     const account = await this.prisma.account.findFirst({
-      where: { id: accountId, userId: userId },
+      where: { id: accountId, userId },
     });
 
     if (!account) throw new NotFoundException('Account not found');
@@ -58,24 +72,21 @@ export class AccountsService {
         name: data.name,
         type: data.type,
         currentBalance: data.currentBalance,
-
-        // NEW: Allow editing of the bank details
         accountNumber: data.accountNumber,
         ifscCode: data.ifscCode,
         branch: data.branch,
+        isLiquid: data.type === AccountType.CASH || data.type === AccountType.BANK,
       },
     });
   }
 
   async remove(userId: string, accountId: string) {
     const account = await this.prisma.account.findFirst({
-      where: { id: accountId, userId: userId },
+      where: { id: accountId, userId },
     });
 
     if (!account) throw new NotFoundException('Account not found');
 
-    return this.prisma.account.delete({
-      where: { id: accountId },
-    });
+    return this.prisma.account.delete({ where: { id: accountId } });
   }
 }

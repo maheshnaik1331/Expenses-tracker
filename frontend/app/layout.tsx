@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
-import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import "./globals.css";
+
+// 1. Import our custom premium toaster
+import { PremiumToaster } from "@/components/premium-toaster";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -23,10 +25,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${outfit.variable} font-sans antialiased bg-white text-zinc-900 selection:bg-zinc-200`}>
-        {/* Wrap the app in the AuthProvider */}
         <AuthProvider>
           {children}
-          <Toaster richColors position="top-right" />
+          {/* 2. Render the custom PremiumToaster instead of the old Sonner component */}
+          <PremiumToaster />
         </AuthProvider>
       </body>
     </html>

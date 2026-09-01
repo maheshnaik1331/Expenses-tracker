@@ -7,7 +7,6 @@ import { UpdateLoanDto } from './dto/update-loan.dto';
 export class LoansService {
     constructor(private prisma: PrismaService) { }
 
-    // 1. Create a new credit instrument
     async create(userId: string, data: CreateLoanDto) {
         return this.prisma.loan.create({
             data: {
@@ -18,41 +17,35 @@ export class LoansService {
                 principal: data.principal,
                 monthlyRate: data.monthlyRate || 0,
                 startDate: new Date(data.startDate),
-                // Handle optional dueDate
                 dueDate: data.dueDate ? new Date(data.dueDate) : null,
                 status: 'ACTIVE',
             },
         });
     }
 
-    // 2. Fetch all active instruments for the user dashboard
-    async findAllActive(userId: string) {
+    // UPDATED: Removed the 'status: ACTIVE' filter so the frontend receives the entire ledger
+    async findAll(userId: string) {
         return this.prisma.loan.findMany({
             where: {
-                userId,
-                status: 'ACTIVE'
+                userId
             },
             orderBy: { startDate: 'desc' },
         });
     }
 
-    // 3. Edit/Update an existing instrument
     async update(id: string, userId: string, updateData: UpdateLoanDto) {
-        // Security Check: Ensure the loan exists AND belongs to the requesting user
         const loan = await this.prisma.loan.findFirst({
             where: { id, userId },
         });
 
         if (!loan) throw new NotFoundException('Credit agreement not found');
 
-        // Safely format dates for Prisma if they are included in the update payload
         const dataToUpdate: any = { ...updateData };
 
         if (updateData.startDate) {
             dataToUpdate.startDate = new Date(updateData.startDate);
         }
 
-        // Explicitly check for undefined to allow passing 'null' to clear the date
         if (updateData.dueDate !== undefined) {
             dataToUpdate.dueDate = updateData.dueDate ? new Date(updateData.dueDate) : null;
         }
@@ -63,7 +56,6 @@ export class LoansService {
         });
     }
 
-    // 4. Delete an instrument permanently
     async remove(id: string, userId: string) {
         const loan = await this.prisma.loan.findFirst({
             where: { id, userId },
@@ -76,7 +68,7 @@ export class LoansService {
         });
     }
 
-    // 5. Mark an instrument as Settled/Cleared
+    // UPDATED: Stamps the exact date and time the instrument was cleared to freeze interest calculations
     async markAsCleared(id: string, userId: string) {
         const loan = await this.prisma.loan.findFirst({
             where: { id, userId },
@@ -86,7 +78,10 @@ export class LoansService {
 
         return this.prisma.loan.update({
             where: { id },
-            data: { status: 'CLEARED' },
+            data: {
+                status: 'CLEARED',
+                clearedDate: new Date()
+            },
         });
     }
 }

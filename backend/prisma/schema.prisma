@@ -1,11 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "library"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+ 
 }
 
 // ==========================================
@@ -27,8 +28,8 @@ model User {
   // Relationships
   accounts       Account[]
   transactions   Transaction[]
-  loans          Loan[]          // <-- FIXED: Changed from debts to loans
-  recurringBills RecurringBill[] 
+  loans          Loan[]
+  recurringBills RecurringBill[]
 
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -38,19 +39,28 @@ model User {
 // 2. FINANCIAL LEDGERS (ACCOUNTS)
 // ==========================================
 
+enum AccountType {
+  BANK          // Savings / Current Bank Accounts
+  CASH          // Liquid Cash / Physical Wallet
+  CREDIT_CARD   // Credit Cards
+  INVESTMENT    // Stocks / Mutual Funds / Crypto
+  SAVINGS       // High-yield / FD Accounts
+}
+
 model Account {
   id             String          @id @default(uuid())
-  name           String
-  type           String        
+  name           String          // e.g., "HDFC Bank", "Petty Cash", "Main Credit Card"
+  type           AccountType     @default(BANK)
   
-  // Account Details
-  accountNumber  String?       
-  ifscCode       String?       
-  branch         String?       
+  // Account Details (Optional for CASH)
+  accountNumber  String?        
+  ifscCode       String?        
+  branch         String?        
   
   currentBalance Float           @default(0)
   currency       String          @default("INR")
   status         String          @default("ACTIVE")
+  isLiquid       Boolean         @default(false) // True for physical cash and instant withdrawal checking accounts
   
   // SaaS Tenant Link
   userId         String
@@ -60,32 +70,43 @@ model Account {
   updatedAt      DateTime        @updatedAt
   
   // Relationships
-  transactions   Transaction[]
-  recurringBills RecurringBill[] 
+  transactions     Transaction[] @relation("SourceAccount")
+  transferReceipts Transaction[] @relation("DestinationAccount")
+  recurringBills   RecurringBill[]
 }
 
 // ==========================================
-// 3. TRANSACTIONS
+// 3. TRANSACTIONS & SELF-TRANSFERS
 // ==========================================
 
-model Transaction {
-  id             String        @id @default(uuid())
-  type           String        // 'INCOME' or 'EXPENSE'
-  amount         Float
-  category       String
-  note           String?
-  date           DateTime      @default(now())
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER // Internal transfer between user's own accounts
+}
 
-  // Relates to the Account
-  accountId      String
-  account        Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+model Transaction {
+  id           String          @id @default(uuid())
+  type         TransactionType
+  amount       Float
+  category     String
+  note         String?
+  date         DateTime        @default(now())
+
+  // Primary Account (Source account for EXPENSE/TRANSFER, Target account for INCOME)
+  accountId    String
+  account      Account         @relation("SourceAccount", fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Target Account (ONLY used when type === TRANSFER)
+  toAccountId  String?
+  toAccount    Account?        @relation("DestinationAccount", fields: [toAccountId], references: [id], onDelete: Cascade)
 
   // SaaS Tenant Link
-  userId         String
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 }
 
 // ==========================================
@@ -97,28 +118,27 @@ enum LoanDirection {
   LENT      // You gave money (Asset)
 }
 
-// FIXED: Renamed from Debt to Loan to match the backend service
 model Loan {
-  id             String        @id @default(uuid())
-  counterparty   String        // Bank name, friend's name, or business
+  id           String        @id @default(uuid())
+  counterparty String        // Bank name, friend's name, or business
   
-  direction      LoanDirection @default(BORROWED)
-  type           String        // 'PERSONAL', 'HOME', 'BUSINESS', 'GOLD'
+  direction    LoanDirection @default(BORROWED)
+  type         String        // 'PERSONAL', 'HOME', 'BUSINESS', 'GOLD'
   
-  principal      Float         
-  monthlyRate    Float?        @default(0)
+  principal    Float         
+  monthlyRate  Float?        @default(0)
   
-  startDate      DateTime      @default(now())
-  status         String        @default("ACTIVE") // 'ACTIVE' or 'CLEARED'
-  clearedDate    DateTime?
-  dueDate        DateTime?     // <-- NEW: Target Payoff Date included
+  startDate    DateTime      @default(now())
+  status       String        @default("ACTIVE") // 'ACTIVE' or 'CLEARED'
+  clearedDate  DateTime?
+  dueDate      DateTime?     // Target Payoff Date
   
   // SaaS Tenant Link
-  userId         String
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
 // ==========================================
@@ -135,28 +155,24 @@ enum RecurrenceInterval {
 }
 
 model RecurringBill {
-  id             String             @id @default(uuid())
-  name           String             // e.g., "Apartment Rent", "AWS Hosting"
-  amount         Float
-  category       String             
+  id           String             @id @default(uuid())
+  name         String             // e.g., "Apartment Rent", "AWS Hosting"
+  amount       Float
+  category     String             
   
-  // The Custom Recurrence Logic
-  interval       RecurrenceInterval @default(MONTHLY)
-  customDays     Int?               // ONLY used if interval is CUSTOM
+  interval     RecurrenceInterval @default(MONTHLY)
+  customDays   Int?               
   
-  // The Timeline Tracker
-  nextDueDate    DateTime           
-  lastPaidDate   DateTime?          
-  status         String             @default("ACTIVE") 
+  nextDueDate  DateTime           
+  lastPaidDate DateTime?          
+  status       String             @default("ACTIVE") 
 
-  // Default account this bill is paid from
-  accountId      String
-  account        Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId    String
+  account      Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  // SaaS Tenant Link
-  userId         String
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 }

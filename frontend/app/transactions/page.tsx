@@ -1,68 +1,114 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/navbar";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { motion, AnimatePresence, Variants } from "framer-motion";
 import {
-    Loader2, Plus, ArrowUpRight, ArrowDownRight,
-    Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase, IndianRupee,
-    Pencil, Trash2
+    Loader2, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft,
+    Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase,
+    Pencil, Trash2, Calendar, ShieldAlert, X, Repeat, ChevronDown, Check
 } from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
 
-// Category configurations for UI rendering
 const INCOME_CATEGORIES = ["Salary", "Freelance", "Investments", "Refund", "Other"];
 const EXPENSE_CATEGORIES = ["Housing", "Food & Dining", "Transportation", "Utilities", "Subscriptions", "Debt Repayment", "Shopping", "Other"];
+const TRANSFER_CATEGORIES = ["Self Transfer", "Investment Deposit", "Credit Card Payment"];
 
-// Helper to map categories to icons
 const getCategoryIcon = (category: string, type: string) => {
-    if (type === "INCOME") return <Briefcase className="w-4 h-4" />;
+    if (type === "TRANSFER") return <Repeat className="w-4 h-4 font-bold" />;
+    if (type === "INCOME") return <Briefcase className="w-4 h-4 font-bold" />;
     switch (category) {
-        case "Food & Dining": return <Coffee className="w-4 h-4" />;
-        case "Housing": return <Home className="w-4 h-4" />;
-        case "Transportation": return <Car className="w-4 h-4" />;
-        case "Subscriptions": return <Receipt className="w-4 h-4" />;
-        default: return <Wallet className="w-4 h-4" />;
+        case "Food & Dining": return <Coffee className="w-4 h-4 font-bold" />;
+        case "Housing": return <Home className="w-4 h-4 font-bold" />;
+        case "Transportation": return <Car className="w-4 h-4 font-bold" />;
+        case "Subscriptions": return <Receipt className="w-4 h-4 font-bold" />;
+        default: return <Wallet className="w-4 h-4 font-bold" />;
     }
+};
+
+// --- CUSTOM INTERACTIVE DROPDOWN COMPONENT ---
+const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false);
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const selectedOption = options.find((o: any) => o.value === value);
+
+    return (
+        <div className="relative w-full" ref={dropdownRef}>
+            {label && <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">{label}</label>}
+            <div
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full bg-white border border-slate-200 hover:border-slate-300 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 cursor-pointer flex justify-between items-center transition-all shadow-sm"
+            >
+                <div className="flex items-center gap-2 truncate">
+                    {Icon && <Icon className="w-4 h-4 text-slate-400" />}
+                    <span className="truncate">{selectedOption?.label || "Select..."}</span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </div>
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                        className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden z-50"
+                    >
+                        <div className="max-h-56 overflow-y-auto p-1.5 scrollbar-thin scrollbar-thumb-slate-200">
+                            {options.map((opt: any) => (
+                                <div
+                                    key={opt.value}
+                                    onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                                    className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
+                                >
+                                    <span className={`text-sm ${value === opt.value ? 'font-bold text-blue-600' : 'font-semibold text-slate-700'}`}>{opt.label}</span>
+                                    {value === opt.value && <Check className="w-4 h-4 text-blue-600 font-bold" />}
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
 };
 
 export default function TransactionsPage() {
     const { user, loading } = useAuth();
 
-    // App State
     const [transactions, setTransactions] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
     const [fetching, setFetching] = useState(true);
     const [submitting, setSubmitting] = useState(false);
 
-    // Modal & Edit State
-    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [txToDelete, setTxToDelete] = useState<string | null>(null);
 
-    // Filter State
     const [searchTerm, setSearchTerm] = useState("");
-    const [typeFilter, setTypeFilter] = useState("ALL"); // ALL, INCOME, EXPENSE
+    const [typeFilter, setTypeFilter] = useState("ALL");
+    const [timeFilter, setTimeFilter] = useState("THIS_MONTH");
 
-    // Form State
     const [form, setForm] = useState({
         type: "EXPENSE",
         amount: "",
         category: EXPENSE_CATEGORIES[0],
         note: "",
-        accountId: ""
+        date: new Date().toISOString().split('T')[0],
+        accountId: "",
+        toAccountId: ""
     });
 
-    // Fetch all required data (Transactions & Accounts)
-    const fetchDashboardData = async () => {
+    const fetchLedgerData = async () => {
         try {
             setFetching(true);
             const [txRes, accRes] = await Promise.all([
@@ -73,12 +119,10 @@ export default function TransactionsPage() {
             setTransactions(txRes.data || []);
             setAccounts(accRes.data || []);
 
-            // Auto-select the first account in the form if available
             if (accRes.data && accRes.data.length > 0 && !form.accountId) {
                 setForm(prev => ({ ...prev, accountId: accRes.data[0].id }));
             }
         } catch (err) {
-            console.error("Error fetching ledger data:", err);
             toast.error("Failed to synchronize transaction history.");
         } finally {
             setFetching(false);
@@ -86,380 +130,393 @@ export default function TransactionsPage() {
     };
 
     useEffect(() => {
-        if (!loading && user) {
-            fetchDashboardData();
-        }
+        if (!loading && user) fetchLedgerData();
     }, [user, loading]);
 
-    // Handle Form Reset
     const resetForm = () => {
         setForm({
             type: "EXPENSE",
             amount: "",
             category: EXPENSE_CATEGORIES[0],
             note: "",
-            accountId: accounts.length > 0 ? accounts[0].id : ""
+            date: new Date().toISOString().split('T')[0],
+            accountId: accounts.length > 0 ? accounts[0].id : "",
+            toAccountId: ""
         });
         setEditingId(null);
+        setIsFormOpen(true);
     };
 
-    // Switch between Income and Expense categories dynamically
     const handleTypeChange = (newType: string) => {
         setForm({
             ...form,
             type: newType,
-            category: newType === "INCOME" ? INCOME_CATEGORIES[0] : EXPENSE_CATEGORIES[0]
+            category: newType === "INCOME" ? INCOME_CATEGORIES[0] : newType === "TRANSFER" ? TRANSFER_CATEGORIES[0] : EXPENSE_CATEGORIES[0]
         });
     };
 
-    // Open Edit Modal with Pre-filled Data
     const handleEditClick = (tx: any) => {
         setForm({
             type: tx.type,
             amount: tx.amount.toString(),
             category: tx.category,
             note: tx.note || "",
-            accountId: tx.accountId
+            date: new Date(tx.date).toISOString().split('T')[0],
+            accountId: tx.accountId,
+            toAccountId: tx.toAccountId || ""
         });
         setEditingId(tx.id);
-        setIsDialogOpen(true);
+        setIsFormOpen(true);
     };
 
-    // Handle Delete Transaction
-    const handleDeleteClick = async (id: string) => {
-        if (!window.confirm("Are you sure you want to delete this transaction? This action will impact your account balance and cannot be undone.")) return;
-
+    const confirmDeletion = async () => {
+        if (!txToDelete) return;
         try {
-            await api.delete(`/transactions/${id}`);
-            toast.success("Transaction deleted successfully.");
-            fetchDashboardData(); // Refresh the list and balances
+            setSubmitting(true);
+            await api.delete(`/transactions/${txToDelete}`);
+            toast.success("Transaction purged from ledger.");
+            fetchLedgerData();
         } catch (err) {
-            console.error("Deletion failed:", err);
             toast.error("Failed to delete transaction.");
+        } finally {
+            setSubmitting(false);
+            setTxToDelete(null);
         }
     };
 
-    // Submit New OR Edited Transaction
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.amount || parseFloat(form.amount) <= 0) return toast.error("Please enter a valid amount.");
-        if (!form.accountId) return toast.error("Please select a bank account to link this transaction.");
+        if (!form.amount || parseFloat(form.amount) <= 0) return toast.error("Invalid capital amount.");
+        if (!form.accountId) return toast.error("Source account required.");
+        if (form.type === "TRANSFER" && (!form.toAccountId || form.accountId === form.toAccountId)) {
+            return toast.error("Transfers require a distinct destination account.");
+        }
 
         try {
             setSubmitting(true);
-
             const payload = {
                 type: form.type,
                 amount: parseFloat(form.amount),
                 category: form.category,
                 note: form.note,
-                accountId: form.accountId
+                date: new Date(form.date).toISOString(),
+                accountId: form.accountId,
+                toAccountId: form.type === "TRANSFER" ? form.toAccountId : null
             };
 
             if (editingId) {
-                // UPDATE EXISTING
                 await api.patch(`/transactions/${editingId}`, payload);
-                toast.success("Transaction updated successfully.");
+                toast.success("Ledger entry updated.");
             } else {
-                // CREATE NEW
                 await api.post("/transactions", payload);
-                toast.success(`${form.type === "INCOME" ? "Income" : "Expense"} logged successfully.`);
+                toast.success("Capital movement recorded.");
             }
 
-            setIsDialogOpen(false);
-            resetForm();
-            fetchDashboardData(); // Refresh the list and balances
+            setIsFormOpen(false);
+            fetchLedgerData();
         } catch (err) {
-            console.error("Submission failed:", err);
-            toast.error(editingId ? "Failed to update transaction." : "Failed to record transaction.");
+            toast.error("Failed to commit transaction.");
         } finally {
             setSubmitting(false);
         }
     };
 
-    // KPI Calculations based on current data
-    const totalIncome = transactions.filter(t => t.type === "INCOME").reduce((acc, curr) => acc + curr.amount, 0);
-    const totalExpense = transactions.filter(t => t.type === "EXPENSE").reduce((acc, curr) => acc + curr.amount, 0);
-    const netCashflow = totalIncome - totalExpense;
+    // --- DYNAMIC FILTERING ENGINE ---
+    const filteredTransactions = useMemo(() => {
+        const now = new Date();
+        return transactions.filter((tx) => {
+            const txDate = new Date(tx.date);
 
-    // Filter Logic
-    const filteredTransactions = transactions.filter((tx) => {
-        const matchesSearch =
-            tx.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (tx.note && tx.note.toLowerCase().includes(searchTerm.toLowerCase()));
-        const matchesType = typeFilter === "ALL" || tx.type === typeFilter;
-        return matchesSearch && matchesType;
-    });
+            const matchesSearch = tx.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (tx.note && tx.note.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
-                <Loader2 className="h-8 w-8 animate-spin text-zinc-900" />
-            </div>
-        );
-    }
+            const matchesType = typeFilter === "ALL" || tx.type === typeFilter;
+
+            let matchesTime = true;
+            if (timeFilter === "THIS_MONTH") {
+                matchesTime = txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
+            } else if (timeFilter === "LAST_MONTH") {
+                const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                matchesTime = txDate.getMonth() === lastMonth.getMonth() && txDate.getFullYear() === lastMonth.getFullYear();
+            } else if (timeFilter === "THIS_YEAR") {
+                matchesTime = txDate.getFullYear() === now.getFullYear();
+            }
+
+            return matchesSearch && matchesType && matchesTime;
+        });
+    }, [transactions, searchTerm, typeFilter, timeFilter]);
+
+    // --- DYNAMIC KPI CALCULATOR ---
+    const kpis = useMemo(() => {
+        let income = 0;
+        let expense = 0;
+        let transferVol = 0;
+
+        filteredTransactions.forEach(tx => {
+            if (tx.type === "INCOME") income += tx.amount;
+            if (tx.type === "EXPENSE") expense += tx.amount;
+            if (tx.type === "TRANSFER") transferVol += tx.amount;
+        });
+
+        return { income, expense, transferVol, net: income - expense };
+    }, [filteredTransactions]);
+
+    const fadeUp: Variants = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { type: "spring", damping: 25 } } };
+    const modalVariants: Variants = {
+        hidden: { opacity: 0, scale: 0.95, y: 20 },
+        visible: { opacity: 1, scale: 1, y: 0, transition: { type: "spring", damping: 25, stiffness: 300 } },
+        exit: { opacity: 0, scale: 0.95, y: 20, transition: { duration: 0.2 } }
+    };
+
+    const typeOptions = [
+        { label: "All Movements", value: "ALL" },
+        { label: "Income Only", value: "INCOME" },
+        { label: "Expenses Only", value: "EXPENSE" },
+        { label: "Transfers Only", value: "TRANSFER" }
+    ];
+
+    const timeOptions = [
+        { label: "This Month", value: "THIS_MONTH" },
+        { label: "Last Month", value: "LAST_MONTH" },
+        { label: "This Year", value: "THIS_YEAR" },
+        { label: "All Time", value: "ALL" }
+    ];
+
+    const categoryOptions = (form.type === "INCOME" ? INCOME_CATEGORIES : form.type === "TRANSFER" ? TRANSFER_CATEGORIES : EXPENSE_CATEGORIES).map(c => ({ label: c, value: c }));
+    const accountOptions = accounts.map(a => ({ label: `${a.name} (₹${a.currentBalance})`, value: a.id }));
+    const targetAccountOptions = accounts.filter(a => a.id !== form.accountId).map(a => ({ label: `${a.name} (₹${a.currentBalance})`, value: a.id }));
+
+    if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]"><Loader2 className="h-8 w-8 animate-spin text-blue-600 font-bold" /></div>;
 
     return (
         <ProtectedRoute>
-            <div className="min-h-screen bg-[#F8F9FA] flex flex-col">
+            <div className="min-h-screen bg-[#F8F9FA] text-slate-900 flex flex-col font-sans antialiased selection:bg-blue-100">
                 <Navbar />
 
-                <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-10">
+                <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-10 relative">
 
                     {/* Header Section */}
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8 border-b border-slate-200/60 pb-6">
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 border-b border-slate-200/60 pb-8">
                         <div>
-                            <h1 className="text-3xl font-bold text-zinc-900 tracking-tight">Cashflow Ledger</h1>
-                            <p className="text-zinc-500 text-sm mt-1">
-                                Log, categorize, edit, and monitor your enterprise income and expenses.
-                            </p>
+                            <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Global Ledger</h1>
+                            <p className="text-slate-500 text-sm mt-2 font-semibold">Trace inflows, outflows, and internal capital transfers.</p>
                         </div>
+                        <button
+                            disabled={accounts.length === 0}
+                            onClick={resetForm}
+                            className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold text-sm px-6 py-3.5 rounded-xl shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
+                        >
+                            <Plus className="w-4 h-4 font-bold" /> Log Movement
+                        </button>
+                    </motion.div>
 
-                        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
-                            <DialogTrigger
-                                disabled={accounts.length === 0}
-                                onClick={() => resetForm()} // Ensure form is clean for new entries
-                                className="flex items-center justify-center gap-2 bg-zinc-900 text-white font-semibold text-sm px-5 py-3 rounded-xl shadow-md hover:bg-zinc-800 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title={accounts.length === 0 ? "Add a bank account first" : ""}
-                            >
-                                <Plus className="w-4 h-4" /> Log Transaction
-                            </DialogTrigger>
-                            <DialogContent className="bg-white p-6 rounded-2xl max-w-md w-full shadow-2xl border border-slate-100">
-                                <DialogHeader>
-                                    <DialogTitle className="text-xl font-bold text-zinc-900 mb-2">
-                                        {editingId ? "Edit Record" : "Record Entry"}
-                                    </DialogTitle>
-                                </DialogHeader>
-
-                                <form onSubmit={handleSubmit} className="space-y-4">
-
-                                    {/* Type Switcher */}
-                                    <div className="flex p-1 bg-slate-100 rounded-xl">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleTypeChange("EXPENSE")}
-                                            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${form.type === "EXPENSE" ? "bg-white text-rose-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
-                                        >
-                                            Expense
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleTypeChange("INCOME")}
-                                            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${form.type === "INCOME" ? "bg-white text-emerald-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
-                                        >
-                                            Income
-                                        </button>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        {/* Amount */}
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Amount</label>
-                                            <div className="relative">
-                                                <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    required
-                                                    placeholder="0.00"
-                                                    value={form.amount}
-                                                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all text-zinc-900"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Category */}
-                                        <div className="col-span-2 sm:col-span-1">
-                                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Category</label>
-                                            <select
-                                                value={form.category}
-                                                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 text-zinc-800 cursor-pointer"
-                                            >
-                                                {(form.type === "INCOME" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(cat => (
-                                                    <option key={cat} value={cat}>{cat}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    {/* Account Selection */}
-                                    <div>
-                                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Source / Destination Account</label>
-                                        <select
-                                            required
-                                            value={form.accountId}
-                                            onChange={(e) => setForm({ ...form, accountId: e.target.value })}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 text-zinc-800 cursor-pointer"
-                                        >
-                                            {accounts.map(acc => (
-                                                <option key={acc.id} value={acc.id}>{acc.name} (₹{acc.currentBalance})</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Note */}
-                                    <div>
-                                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1">Note (Optional)</label>
-                                        <input
-                                            type="text"
-                                            placeholder="E.g., Client payment, Dinner with team..."
-                                            value={form.note}
-                                            onChange={(e) => setForm({ ...form, note: e.target.value })}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:bg-white transition-all text-zinc-900"
-                                        />
-                                    </div>
-
-                                    <div className="pt-4 flex justify-end gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsDialogOpen(false)}
-                                            className="bg-slate-100 hover:bg-slate-200 text-zinc-700 text-sm font-semibold px-4 py-2.5 rounded-xl transition-all"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            disabled={submitting}
-                                            className="bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50"
-                                        >
-                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingId ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />)}
-                                            {editingId ? "Update Record" : "Save Record"}
-                                        </button>
-                                    </div>
-
-                                </form>
-                            </DialogContent>
-                        </Dialog>
-                    </div>
-
-                    {/* Real-time KPI Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><ArrowUpRight className="w-5 h-5" /></div>
+                    {/* --- DYNAMIC KPI STRIP --- */}
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm flex items-center gap-4">
+                            <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl"><ArrowDownLeft className="w-5 h-5 font-bold" /></div>
                             <div>
-                                <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Inflow</p>
-                                <p className="text-xl font-bold text-zinc-900 mt-0.5">₹{totalIncome.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Period Inflow</p>
+                                <p className="text-xl font-bold text-slate-900 mt-0.5 font-mono">₹{kpis.income.toLocaleString("en-IN")}</p>
                             </div>
                         </div>
-                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-                            <div className="p-3 bg-rose-50 text-rose-600 rounded-xl"><ArrowDownRight className="w-5 h-5" /></div>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm flex items-center gap-4">
+                            <div className="p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl"><ArrowUpRight className="w-5 h-5 font-bold" /></div>
                             <div>
-                                <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Outflow</p>
-                                <p className="text-xl font-bold text-zinc-900 mt-0.5">₹{totalExpense.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Period Outflow</p>
+                                <p className="text-xl font-bold text-slate-900 mt-0.5 font-mono">₹{kpis.expense.toLocaleString("en-IN")}</p>
                             </div>
                         </div>
-                        <div className="bg-zinc-900 p-5 rounded-2xl border border-zinc-800 shadow-sm flex items-center gap-4 text-white">
-                            <div className="p-3 bg-zinc-800 rounded-xl"><Wallet className="w-5 h-5" /></div>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-sm flex items-center gap-4">
+                            <div className="p-3 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-xl"><ArrowRightLeft className="w-5 h-5 font-bold" /></div>
                             <div>
-                                <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Net Cashflow</p>
-                                <p className="text-xl font-bold mt-0.5">
-                                    {netCashflow < 0 ? "-" : ""}₹{Math.abs(netCashflow).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Transfer Volume</p>
+                                <p className="text-xl font-bold text-slate-900 mt-0.5 font-mono">₹{kpis.transferVol.toLocaleString("en-IN")}</p>
+                            </div>
+                        </div>
+                        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-2xl border border-blue-500 shadow-md flex items-center gap-4">
+                            <div className="p-3 bg-white/10 text-white rounded-xl"><Wallet className="w-5 h-5 font-bold" /></div>
+                            <div>
+                                <p className="text-[10px] font-bold text-blue-100 uppercase tracking-widest">Period Net Cashflow</p>
+                                <p className={`text-xl font-bold mt-0.5 font-mono text-white`}>
+                                    {kpis.net > 0 ? "+" : ""}₹{kpis.net.toLocaleString("en-IN")}
                                 </p>
                             </div>
                         </div>
-                    </div>
+                    </motion.div>
 
-                    {/* Data Table / List Area */}
-                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-
-                        {/* Table Toolbar */}
-                        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-4 justify-between items-center bg-slate-50/50">
-                            <div className="relative w-full sm:w-80">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 w-4 h-4" />
-                                <input
-                                    type="text"
-                                    placeholder="Search category, notes..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all text-zinc-900"
-                                />
+                    {/* --- FILTER ENGINE --- */}
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row gap-4 mb-6">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 font-bold" />
+                            <input
+                                type="text" placeholder="Search category, notes..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full bg-white border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
+                            />
+                        </div>
+                        <div className="flex gap-4 w-full md:w-auto">
+                            <div className="w-full md:w-48">
+                                <PremiumDropdown value={typeFilter} options={typeOptions} onChange={setTypeFilter} icon={Filter} />
                             </div>
-
-                            <div className="flex items-center gap-2 w-full sm:w-auto">
-                                <Filter className="w-4 h-4 text-zinc-400" />
-                                <select
-                                    value={typeFilter}
-                                    onChange={(e) => setTypeFilter(e.target.value)}
-                                    className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-zinc-900 text-zinc-700 cursor-pointer"
-                                >
-                                    <option value="ALL">All Transactions</option>
-                                    <option value="INCOME">Income Only</option>
-                                    <option value="EXPENSE">Expenses Only</option>
-                                </select>
+                            <div className="w-full md:w-48">
+                                <PremiumDropdown value={timeFilter} options={timeOptions} onChange={setTimeFilter} icon={Calendar} />
                             </div>
                         </div>
+                    </motion.div>
 
-                        {/* Transactions List */}
+                    {/* --- MAIN LEDGER TABLE --- */}
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="bg-white border border-slate-200/60 rounded-[2rem] overflow-hidden shadow-sm">
                         <div className="divide-y divide-slate-100">
                             {fetching ? (
-                                <div className="py-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-zinc-400" /></div>
+                                <div className="py-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600 font-bold" /></div>
                             ) : filteredTransactions.length === 0 ? (
-                                <div className="py-16 text-center">
-                                    <Receipt className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                                    <p className="text-zinc-500 font-medium text-sm">No transactions found.</p>
+                                <div className="py-24 text-center flex flex-col items-center">
+                                    <Receipt className="w-12 h-12 text-slate-300 mb-4" />
+                                    <p className="text-slate-500 font-bold text-sm">No transaction records match this criteria.</p>
                                 </div>
                             ) : (
                                 filteredTransactions.map((tx) => {
                                     const isIncome = tx.type === "INCOME";
+                                    const isTransfer = tx.type === "TRANSFER";
                                     const account = accounts.find(a => a.id === tx.accountId);
+                                    const toAccount = accounts.find(a => a.id === tx.toAccountId);
 
                                     return (
-                                        <div key={tx.id} className="group p-4 sm:px-6 hover:bg-slate-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-
-                                            {/* Transaction Info */}
+                                        <div key={tx.id} className="group p-5 sm:px-8 hover:bg-slate-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                             <div className="flex items-center gap-4 min-w-0 flex-1">
-                                                <div className={`p-3 rounded-xl flex-shrink-0 ${isIncome ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-zinc-600'}`}>
+                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border shadow-sm ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
+                                                        isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' :
+                                                            'bg-rose-50 border-rose-100 text-rose-600'
+                                                    }`}>
                                                     {getCategoryIcon(tx.category, tx.type)}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className="text-sm font-bold text-zinc-900 truncate">{tx.category}</p>
-                                                    <div className="flex items-center gap-2 text-xs text-zinc-500 mt-0.5">
-                                                        <span className="truncate max-w-[120px] sm:max-w-[200px]">{tx.note || "No notes"}</span>
-                                                        <span className="hidden sm:inline">•</span>
-                                                        <span className="hidden sm:inline font-medium text-zinc-600">{account?.name || "Unknown Account"}</span>
+                                                    <p className="text-base font-bold text-slate-900 truncate">{tx.category}</p>
+                                                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mt-1">
+                                                        <span className="truncate max-w-[200px]">{tx.note || (isTransfer ? "Internal Transfer" : "No description")}</span>
+                                                        <span className="hidden sm:inline text-slate-300">•</span>
+                                                        <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                                            {account?.name} {isTransfer && toAccount ? ` → ${toAccount.name}` : ''}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            {/* Amount & Actions */}
-                                            <div className="flex items-center justify-between sm:justify-end gap-6 sm:w-auto border-t sm:border-0 pt-4 sm:pt-0 border-slate-100">
-                                                <div className="text-right flex-shrink-0">
-                                                    <p className={`text-base font-bold font-mono ${isIncome ? 'text-emerald-600' : 'text-zinc-900'}`}>
-                                                        {isIncome ? "+" : "-"}₹{tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                            <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-0 pt-4 sm:pt-0 border-slate-100">
+                                                <div className="text-right">
+                                                    <p className={`text-base font-bold font-mono ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
+                                                        {isIncome ? "+" : isTransfer ? "⇄" : "-"}₹{tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                                                     </p>
-                                                    <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mt-1">
-                                                        {new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                                                        {new Date(tx.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                     </p>
                                                 </div>
 
-                                                {/* Action Buttons (Edit / Delete) */}
                                                 <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        onClick={() => handleEditClick(tx)}
-                                                        className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                        title="Edit Transaction"
-                                                    >
-                                                        <Pencil className="w-4 h-4" />
+                                                    <button onClick={() => handleEditClick(tx)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-lg transition-colors shadow-sm">
+                                                        <Pencil className="w-4 h-4 font-bold" />
                                                     </button>
-                                                    <button
-                                                        onClick={() => handleDeleteClick(tx.id)}
-                                                        className="p-2 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                                        title="Delete Transaction"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
+                                                    <button onClick={() => setTxToDelete(tx.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg transition-colors shadow-sm">
+                                                        <Trash2 className="w-4 h-4 font-bold" />
                                                     </button>
                                                 </div>
                                             </div>
-
                                         </div>
                                     )
                                 })
                             )}
                         </div>
+                    </motion.div>
 
-                    </div>
+                    {/* --- GLASSMORPHISM DELETE MODAL --- */}
+                    <AnimatePresence>
+                        {txToDelete && (
+                            <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setTxToDelete(null)} />
+                                <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] p-8 max-w-md w-full shadow-2xl">
+                                    <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-6 border border-rose-100">
+                                        <ShieldAlert className="w-6 h-6 text-rose-600 font-bold" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-900 mb-2">Purge Transaction?</h3>
+                                    <p className="text-sm font-semibold text-slate-500 mb-8">This will erase the record and mathematically reverse its impact on your associated account balances. Proceed?</p>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setTxToDelete(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold py-3 rounded-xl transition-colors">Cancel</button>
+                                        <button onClick={confirmDeletion} disabled={submitting} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold py-3 rounded-xl flex justify-center items-center shadow-md">
+                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* --- GLASSMORPHISM TRANSACTION ENTRY MODAL --- */}
+                    <AnimatePresence>
+                        {isFormOpen && (
+                            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setIsFormOpen(false)} />
+
+                                <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] w-full max-w-xl shadow-2xl flex flex-col max-h-[90vh]">
+                                    <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 bg-slate-50/80 rounded-t-[2rem]">
+                                        <h2 className="text-xl font-bold text-slate-900 tracking-tight">{editingId ? "Update Record" : "Log Capital Movement"}</h2>
+                                        <button onClick={() => setIsFormOpen(false)} className="p-2 text-slate-400 hover:text-slate-700 bg-white border border-slate-200 rounded-full shadow-sm"><X className="w-4 h-4 font-bold" /></button>
+                                    </div>
+
+                                    <div className="overflow-y-auto p-6 sm:p-8">
+                                        <form id="txForm" onSubmit={handleSubmit} className="space-y-6">
+
+                                            {/* Tri-State Type Switcher */}
+                                            <div className="flex p-1.5 bg-slate-100 border border-slate-200 rounded-xl">
+                                                <button type="button" onClick={() => handleTypeChange("EXPENSE")} className={`flex-1 py-2.5 text-[11px] font-extrabold uppercase tracking-wider rounded-lg transition-all ${form.type === "EXPENSE" ? "bg-white text-rose-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-700"}`}>Expense</button>
+                                                <button type="button" onClick={() => handleTypeChange("INCOME")} className={`flex-1 py-2.5 text-[11px] font-extrabold uppercase tracking-wider rounded-lg transition-all ${form.type === "INCOME" ? "bg-white text-emerald-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-700"}`}>Income</button>
+                                                <button type="button" onClick={() => handleTypeChange("TRANSFER")} className={`flex-1 py-2.5 text-[11px] font-extrabold uppercase tracking-wider rounded-lg transition-all ${form.type === "TRANSFER" ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-700"}`}>Transfer</button>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-6">
+                                                <div className="col-span-2 sm:col-span-1">
+                                                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Amount (₹)</label>
+                                                    <input type="number" step="0.01" required value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-base font-bold font-mono text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none" placeholder="0.00" />
+                                                </div>
+                                                <div className="col-span-2 sm:col-span-1">
+                                                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Date</label>
+                                                    <input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none" />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-6 border-t border-slate-100 pt-6">
+                                                <div className="col-span-2 sm:col-span-1">
+                                                    <PremiumDropdown label={form.type === "TRANSFER" ? "Source Account" : "Account"} value={form.accountId} options={accountOptions} onChange={(val: any) => setForm({ ...form, accountId: val })} />
+                                                </div>
+
+                                                {form.type === "TRANSFER" ? (
+                                                    <div className="col-span-2 sm:col-span-1">
+                                                        <PremiumDropdown label="Destination Account" value={form.toAccountId} options={targetAccountOptions} onChange={(val: any) => setForm({ ...form, toAccountId: val })} />
+                                                    </div>
+                                                ) : (
+                                                    <div className="col-span-2 sm:col-span-1">
+                                                        <PremiumDropdown label="Category" value={form.category} options={categoryOptions} onChange={(val: any) => setForm({ ...form, category: val })} />
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div>
+                                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Note (Optional)</label>
+                                                <input type="text" placeholder="E.g., Dinner with client..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 placeholder:font-semibold focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none" />
+                                            </div>
+                                        </form>
+                                    </div>
+
+                                    <div className="p-6 border-t border-slate-100 bg-slate-50/80 rounded-b-[2rem] flex justify-end gap-3">
+                                        <button onClick={() => setIsFormOpen(false)} className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-sm">Cancel</button>
+                                        <button form="txForm" type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-8 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 shadow-md shadow-blue-600/20">
+                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : editingId ? <Pencil className="w-4 h-4 font-bold" /> : <Plus className="w-4 h-4 font-bold" />}
+                                            {editingId ? "Save Changes" : "Confirm Entry"}
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>
+
                 </main>
             </div>
         </ProtectedRoute>

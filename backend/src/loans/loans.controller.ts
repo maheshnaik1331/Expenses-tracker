@@ -5,7 +5,7 @@ import { UpdateLoanDto } from './dto/update-loan.dto';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 
 @Controller('loans')
-@UseGuards(FirebaseAuthGuard) // Secures all routes in this controller
+@UseGuards(FirebaseAuthGuard)
 export class LoansController {
     constructor(private readonly loansService: LoansService) { }
 
@@ -14,9 +14,10 @@ export class LoansController {
         return this.loansService.create(req.user.id, createLoanDto);
     }
 
+    // UPDATED: Fetches all loans (Active and Cleared) for local frontend filtering
     @Get()
-    findAllActive(@Req() req) {
-        return this.loansService.findAllActive(req.user.id);
+    findAll(@Req() req) {
+        return this.loansService.findAll(req.user.id);
     }
 
     @Patch(':id')

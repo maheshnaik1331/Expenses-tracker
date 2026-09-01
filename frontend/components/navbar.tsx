@@ -7,24 +7,23 @@ import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { toast } from "sonner";
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
     Sparkles,
     LogOut,
-    Settings,
-    UserRound,
     LayoutDashboard,
     Building2,
     Scale,
     ReceiptText,
     FileText,
     Menu,
-    X
+    X,
+    ChevronDown
 } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -35,26 +34,14 @@ export default function Navbar() {
 
     const { user, loading } = useAuth();
 
-    // HEAVILY LOGGED SECURE SIGN OUT LOGIC
     const handleSignOut = async () => {
-        console.log("--- DEBUG: SIGN OUT SEQUENCE INITIATED ---");
-
         try {
-            console.log("1. Triggering loading toast...");
             toast.loading("Securing session and signing out...", { id: "signout-toast" });
-
-            console.log("2. Pinging Firebase to destroy session token...");
             await signOut(auth);
-
-            console.log("3. Firebase successfully cleared the session.");
             toast.success("Successfully signed out.", { id: "signout-toast" });
-
-            console.log("4. Pushing Next.js router to the landing page (/)");
             router.push("/");
-
-            console.log("--- DEBUG: SIGN OUT SEQUENCE COMPLETE ---");
         } catch (error) {
-            console.error("❌ SIGN OUT ERROR TRAPPED:", error);
+            console.error("❌ SIGN OUT ERROR:", error);
             toast.error("Failed to sign out.", { id: "signout-toast" });
         }
     };
@@ -79,27 +66,27 @@ export default function Navbar() {
 
     const navLinks = [
         { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-        { name: "Accounts", path: "/accounts", icon: Building2 },
-        { name: "Transactions", path: "/transactions", icon: ReceiptText },
-        { name: "Bills", path: "/bills", icon: FileText },
-        { name: "Loans", path: "/loans", icon: Scale },
+        { name: "Assets", path: "/accounts", icon: Building2 },
+        { name: "Ledger", path: "/transactions", icon: ReceiptText },
+        { name: "Contracts", path: "/bills", icon: FileText },
+        { name: "Matrix", path: "/loans", icon: Scale },
     ];
 
     return (
-        <nav className="sticky top-0 z-[100] w-full bg-white/80 backdrop-blur-xl border-b border-slate-100 shadow-sm">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <nav className="sticky top-0 z-[100] w-full bg-white/80 backdrop-blur-2xl border-b border-slate-200/60 shadow-sm">
+            <div className="max-w-[1400px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
 
                 {/* Left Side: Logo & Desktop Links */}
-                <div className="flex items-center gap-8">
-                    <Link href="/dashboard" className="flex items-center gap-2 font-bold tracking-tight text-xl text-zinc-900 transition-transform hover:scale-105 z-50">
-                        <div className="bg-zinc-900 text-white p-1.5 rounded-lg shadow-sm">
-                            <Sparkles className="h-4 w-4" />
+                <div className="flex items-center gap-10">
+                    <Link href="/dashboard" className="flex items-center gap-2.5 font-black tracking-tight text-xl text-slate-900 transition-transform hover:scale-105 z-50">
+                        <div className="bg-blue-600 text-white p-1.5 rounded-xl shadow-md shadow-blue-600/20">
+                            <Sparkles className="h-4 w-4" strokeWidth={2.5} />
                         </div>
                         FPMS
                     </Link>
 
-                    {/* Desktop Navigation */}
-                    <div className="hidden md:flex items-center gap-1">
+                    {/* Fluid Desktop Navigation */}
+                    <div className="hidden lg:flex items-center gap-1 relative">
                         {navLinks.map((link) => {
                             const isActive = pathname === link.path;
                             const Icon = link.icon;
@@ -107,12 +94,17 @@ export default function Navbar() {
                                 <Link
                                     key={link.path}
                                     href={link.path}
-                                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${isActive
-                                        ? "bg-zinc-900 text-white shadow-md scale-105"
-                                        : "text-zinc-500 hover:text-zinc-900 hover:bg-slate-100"
+                                    className={`relative flex items-center gap-2 px-4 py-2 text-sm font-bold transition-colors duration-300 z-10 ${isActive ? "text-blue-700" : "text-slate-500 hover:text-slate-800"
                                         }`}
                                 >
-                                    <Icon className={`h-4 w-4 ${isActive ? "text-white" : "text-zinc-400"}`} />
+                                    {isActive && (
+                                        <motion.div
+                                            layoutId="navbar-active-pill"
+                                            className="absolute inset-0 bg-blue-50 border border-blue-100 rounded-xl -z-10 shadow-sm"
+                                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                        />
+                                    )}
+                                    <Icon className={`h-4 w-4 ${isActive ? "text-blue-600" : "text-slate-400"}`} strokeWidth={2.5} />
                                     {link.name}
                                 </Link>
                             );
@@ -123,22 +115,22 @@ export default function Navbar() {
                 {/* Right Side: Profile & Mobile Toggle */}
                 <div className="flex items-center gap-3">
                     {loading ? (
-                        <div className="h-10 w-10 bg-slate-100 animate-pulse rounded-full border border-slate-200"></div>
+                        <div className="h-10 w-32 bg-slate-100 animate-pulse rounded-full border border-slate-200"></div>
                     ) : (
                         <div className="hidden sm:block">
                             <DropdownMenu>
                                 <DropdownMenuTrigger className="focus:outline-none group">
-                                    <div className="flex items-center gap-3 pl-4 pr-1.5 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm group-data-[state=open]:ring-2 group-data-[state=open]:ring-zinc-900 group-data-[state=open]:border-transparent">
+                                    <div className="flex items-center gap-3 pl-4 pr-1.5 py-1.5 rounded-full border border-slate-200/80 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm group-data-[state=open]:ring-4 group-data-[state=open]:ring-blue-500/10 group-data-[state=open]:border-blue-300">
                                         <div className="flex flex-col text-right">
-                                            <span className="text-sm font-bold text-zinc-900 leading-none mb-1 truncate max-w-[120px] capitalize">
+                                            <span className="text-sm font-extrabold text-slate-900 leading-none mb-1 truncate max-w-[120px] capitalize tracking-tight">
                                                 {getDisplayName()}
                                             </span>
-                                            <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider leading-none">
-                                                Workspace Admin
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none flex items-center justify-end gap-1">
+                                                Admin <ChevronDown className="w-3 h-3" strokeWidth={3} />
                                             </span>
                                         </div>
 
-                                        <div className="h-8 w-8 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-bold overflow-hidden shadow-inner border border-zinc-900">
+                                        <div className="h-9 w-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black overflow-hidden shadow-inner border border-blue-700">
                                             {user?.photoURL ? (
                                                 <img src={user.photoURL} alt="Profile" className="h-full w-full object-cover" />
                                             ) : (
@@ -148,43 +140,27 @@ export default function Navbar() {
                                     </div>
                                 </DropdownMenuTrigger>
 
-                                <DropdownMenuContent align="end" className="w-64 p-2 rounded-2xl shadow-xl border-slate-100 bg-white mt-2">
-                                    <div className="p-3 px-4">
-                                        <div className="flex flex-col space-y-1">
-                                            <p className="text-sm font-bold text-zinc-900 leading-none truncate capitalize">
+                                {/* Minimalist Fintech Dropdown */}
+                                <DropdownMenuContent align="end" className="w-64 p-2 rounded-[1.5rem] shadow-2xl border-slate-200 bg-white mt-2">
+                                    <div className="p-4 bg-slate-50/80 border border-slate-100 rounded-[1rem] mb-2 shadow-inner">
+                                        <div className="flex flex-col space-y-1.5">
+                                            <p className="text-sm font-black text-slate-900 leading-none truncate capitalize tracking-tight">
                                                 {getDisplayName()}
                                             </p>
-                                            <p className="text-xs text-zinc-500 font-medium truncate">
-                                                {user?.email || "No email registered"}
+                                            <p className="text-[11px] font-bold text-slate-500 truncate tracking-wide">
+                                                {user?.email || "Unregistered Identity"}
                                             </p>
                                         </div>
                                     </div>
 
-                                    <DropdownMenuSeparator className="bg-slate-100 mx-1 my-1" />
-
-                                    <DropdownMenuItem className="cursor-pointer font-medium text-zinc-700 focus:bg-slate-50 focus:text-zinc-900 rounded-xl py-2.5 px-3 mb-1">
-                                        <UserRound className="mr-3 h-4 w-4 text-zinc-400" /> Account Profile
-                                    </DropdownMenuItem>
-
-                                    <DropdownMenuItem className="cursor-pointer font-medium text-zinc-700 focus:bg-slate-50 focus:text-zinc-900 rounded-xl py-2.5 px-3">
-                                        <Settings className="mr-3 h-4 w-4 text-zinc-400" /> System Preferences
-                                    </DropdownMenuItem>
-
-                                    <DropdownMenuSeparator className="bg-slate-100 mx-1 my-2" />
-
                                     <DropdownMenuItem
-                                        onClick={() => {
-                                            console.log("--- DEBUG: Dropdown onClick triggered! ---");
-                                            handleSignOut();
-                                        }}
-                                        onSelect={(e) => {
-                                            console.log("--- DEBUG: Dropdown onSelect triggered! ---");
+                                        onClick={(e) => {
                                             e.preventDefault();
                                             handleSignOut();
                                         }}
-                                        className="cursor-pointer font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 rounded-xl py-2.5 px-3"
+                                        className="cursor-pointer font-bold text-rose-600 focus:bg-rose-50 focus:text-rose-700 rounded-xl py-3 px-4 flex items-center transition-all"
                                     >
-                                        <LogOut className="mr-3 h-4 w-4" /> Secure Sign Out
+                                        <LogOut className="mr-3 h-4 w-4" strokeWidth={2.5} /> Secure Sign Out
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -194,55 +170,65 @@ export default function Navbar() {
                     {/* Mobile Menu Hamburger Toggle */}
                     <button
                         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                        className="md:hidden p-2 rounded-xl text-zinc-600 hover:bg-slate-100 transition-colors focus:outline-none"
+                        className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors focus:outline-none"
                     >
-                        {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                        {isMobileMenuOpen ? <X className="h-6 w-6" strokeWidth={2.5} /> : <Menu className="h-6 w-6" strokeWidth={2.5} />}
                     </button>
                 </div>
             </div>
 
-            {/* Mobile Navigation Drawer */}
-            {isMobileMenuOpen && (
-                <div className="md:hidden absolute top-16 left-0 w-full bg-white border-b border-slate-200 shadow-xl px-4 py-4 flex flex-col gap-2 animate-in slide-in-from-top-2">
-                    {navLinks.map((link) => {
-                        const isActive = pathname === link.path;
-                        const Icon = link.icon;
-                        return (
-                            <Link
-                                key={link.path}
-                                href={link.path}
-                                onClick={() => setIsMobileMenuOpen(false)}
-                                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive
-                                    ? "bg-zinc-900 text-white shadow-md"
-                                    : "text-zinc-600 hover:bg-slate-50"
-                                    }`}
-                            >
-                                <Icon className={`h-5 w-5 ${isActive ? "text-white" : "text-zinc-400"}`} />
-                                {link.name}
-                            </Link>
-                        );
-                    })}
+            {/* Framer Motion Animated Mobile Navigation Drawer */}
+            <AnimatePresence>
+                {isMobileMenuOpen && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                        className="lg:hidden bg-white border-b border-slate-200 shadow-xl overflow-hidden"
+                    >
+                        <div className="px-4 py-4 flex flex-col gap-2">
+                            {navLinks.map((link) => {
+                                const isActive = pathname === link.path;
+                                const Icon = link.icon;
+                                return (
+                                    <Link
+                                        key={link.path}
+                                        href={link.path}
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                        className={`flex items-center gap-3 px-5 py-4 rounded-2xl text-sm font-extrabold transition-all ${isActive
+                                                ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-100"
+                                                : "text-slate-600 hover:bg-slate-50 border border-transparent"
+                                            }`}
+                                    >
+                                        <Icon className={`h-5 w-5 ${isActive ? "text-blue-600" : "text-slate-400"}`} strokeWidth={2.5} />
+                                        {link.name}
+                                    </Link>
+                                );
+                            })}
 
-                    <div className="border-t border-slate-100 my-2"></div>
+                            <div className="border-t border-slate-100 my-2"></div>
 
-                    {/* Mobile Profile & Signout */}
-                    <div className="flex items-center justify-between px-4 py-2">
-                        <div className="flex flex-col min-w-0">
-                            <span className="text-sm font-bold text-zinc-900 capitalize truncate">{getDisplayName()}</span>
-                            <span className="text-xs text-zinc-500 truncate">{user?.email}</span>
+                            {/* Mobile Profile & Signout */}
+                            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                                <div className="flex flex-col min-w-0">
+                                    <span className="text-sm font-black text-slate-900 capitalize truncate">{getDisplayName()}</span>
+                                    <span className="text-[11px] font-bold text-slate-500 truncate mt-0.5">{user?.email}</span>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setIsMobileMenuOpen(false);
+                                        handleSignOut();
+                                    }}
+                                    className="p-3 rounded-xl bg-rose-100 text-rose-600 hover:bg-rose-200 transition-colors shadow-sm"
+                                >
+                                    <LogOut className="h-5 w-5" strokeWidth={2.5} />
+                                </button>
+                            </div>
                         </div>
-                        <button
-                            onClick={() => {
-                                setIsMobileMenuOpen(false);
-                                handleSignOut();
-                            }}
-                            className="p-2.5 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
-                        >
-                            <LogOut className="h-5 w-5" />
-                        </button>
-                    </div>
-                </div>
-            )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </nav>
     );
 }

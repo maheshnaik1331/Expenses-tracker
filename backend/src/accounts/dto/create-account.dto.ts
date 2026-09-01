@@ -1,16 +1,17 @@
-import { IsString, IsNumber, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsPositive } from 'class-validator';
+import { AccountType } from '@prisma/client'; // <-- Import the Prisma Enum
 
 export class CreateAccountDto {
     @IsString()
     name: string;
 
-    @IsString()
-    type: string;
+    // Enforce the Enum instead of a generic string
+    @IsEnum(AccountType)
+    type: AccountType;
 
     @IsNumber()
     currentBalance: number;
 
-    // NEW: Allow the API to accept these fields securely
     @IsOptional()
     @IsString()
     accountNumber?: string;
