@@ -14,16 +14,17 @@ import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sparkles, ArrowRight, Loader2, CreditCard, Lock, CheckCircle2, DollarSign } from "lucide-react";
+import { Sparkles, ArrowRight, Loader2, CreditCard, Lock, CheckCircle2, ShieldCheck, Activity } from "lucide-react";
 import Link from "next/link";
 
 export default function AuthPage() {
     const router = useRouter();
     const [isLogin, setIsLogin] = useState(true);
 
-    // Auth Animation Phases: "idle" -> "processing" (card inserts) -> "success" (cash flows)
+    // Auth Animation Phases: "idle" -> "processing" (card inserts) -> "success" (data flows)
     const [authPhase, setAuthPhase] = useState<"idle" | "processing" | "success">("idle");
     const [googleLoading, setGoogleLoading] = useState(false);
+    const [emailLoading, setEmailLoading] = useState(false);
 
     // Form State
     const [email, setEmail] = useState("");
@@ -34,6 +35,7 @@ export default function AuthPage() {
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setAuthPhase("processing");
+        setEmailLoading(true);
 
         try {
             if (isLogin) {
@@ -41,10 +43,9 @@ export default function AuthPage() {
                 setAuthPhase("success");
                 toast.success("Identity verified. Accessing ledger...");
 
-                // Delay redirect slightly to allow the "cash/success" animation to play
                 setTimeout(() => {
                     router.push("/dashboard");
-                }, 1500);
+                }, 1800);
             } else {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 await updateProfile(userCredential.user, {
@@ -56,11 +57,12 @@ export default function AuthPage() {
 
                 setTimeout(() => {
                     router.push("/dashboard");
-                }, 1500);
+                }, 1800);
             }
         } catch (error: any) {
             console.error(error);
             setAuthPhase("idle");
+            setEmailLoading(false);
             toast.error(error.message || "Authentication failed. Please try again.");
         }
     };
@@ -77,61 +79,70 @@ export default function AuthPage() {
 
             setTimeout(() => {
                 router.push("/dashboard");
-            }, 1500);
+            }, 1800);
         } catch (error: any) {
             console.error(error);
             setAuthPhase("idle");
+            setGoogleLoading(false);
             if (error.code !== "auth/popup-closed-by-user") {
                 toast.error(error.message || "Google Authentication failed.");
             }
-        } finally {
-            setGoogleLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex bg-[#050505] text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
+        <div className="min-h-screen flex bg-[#050505] text-white font-sans antialiased selection:bg-indigo-500/30 overflow-hidden">
 
-            {/* --- Left Panel: The "ATM" Animation Terminal (Hidden on small mobile) --- */}
+            {/* --- Left Panel: The FinTech Animation Terminal --- */}
             <div className="hidden lg:flex flex-1 relative items-center justify-center bg-[#0A0A0B] border-r border-white/5 overflow-hidden">
                 {/* Subtle Background Glow */}
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(79,70,229,0.05)_0%,transparent_70%)]"></div>
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(79,70,229,0.07)_0%,transparent_70%)]"></div>
 
                 <div className="relative z-10 flex flex-col items-center w-full max-w-md perspective-[1000px]">
 
-                    {/* The Floating Card */}
+                    {/* The Floating Obsidian Card */}
                     <motion.div
                         animate={
                             authPhase === "idle"
                                 ? { y: [-10, 10, -10], rotateX: [5, -5, 5], rotateY: [-10, 10, -10] }
                                 : authPhase === "processing"
-                                    ? { y: 140, rotateX: 60, scale: 0.8, opacity: 0.5 }
-                                    : { y: 140, rotateX: 60, scale: 0.8, opacity: 0 }
+                                    ? { y: 150, rotateX: 60, scale: 0.85, opacity: 0.5 }
+                                    : { y: 150, rotateX: 60, scale: 0.85, opacity: 0 }
                         }
                         transition={{
                             duration: authPhase === "idle" ? 6 : 0.8,
                             repeat: authPhase === "idle" ? Infinity : 0,
                             ease: "easeInOut"
                         }}
-                        className="relative z-20 w-[300px] h-[190px] rounded-2xl p-6 flex flex-col justify-between shadow-[0_20px_50px_-15px_rgba(255,255,255,0.1)] border border-white/20 bg-gradient-to-br from-zinc-200 to-zinc-400 text-black mb-12"
+                        className="relative z-20 w-[320px] h-[200px] rounded-[1.5rem] p-6 flex flex-col justify-between shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] border border-white/10 bg-gradient-to-br from-zinc-800 via-zinc-900 to-black text-white mb-12 overflow-hidden group"
                     >
-                        <div className="flex justify-between items-start">
-                            <CreditCard className="h-8 w-8 text-black/80" />
-                            <span className="font-bold tracking-widest text-xs opacity-70">FPMS ACCESS</span>
-                        </div>
-                        <div>
-                            <div className="flex gap-4 mb-2 font-mono tracking-widest text-lg opacity-80">
-                                <span>****</span><span>****</span><span>****</span><span>SECURE</span>
+                        {/* Metallic Glare Effect */}
+                        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-50 transform -translate-x-[50%] rotate-45 pointer-events-none"></div>
+
+                        {/* Card Chip / Logo */}
+                        <div className="flex justify-between items-start relative z-10">
+                            <div className="w-12 h-10 bg-yellow-500/20 rounded-md border border-yellow-500/30 flex items-center justify-center shadow-inner">
+                                <div className="w-8 h-6 border border-yellow-500/40 rounded-sm"></div>
                             </div>
-                            <div className="text-xs font-semibold opacity-70">
-                                ENTERPRISE LEDGER
+                            <span className="font-extrabold tracking-widest text-[10px] text-zinc-400 uppercase">FPMS Access</span>
+                        </div>
+
+                        <div className="relative z-10">
+                            <div className="flex gap-4 mb-2 font-mono font-bold tracking-widest text-lg text-zinc-300 drop-shadow-sm">
+                                <span>****</span><span>****</span><span>****</span><span className="text-white">AUTH</span>
+                            </div>
+                            <div className="flex justify-between items-end">
+                                <div className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase">
+                                    Enterprise Ledger
+                                </div>
+                                <Sparkles className="w-6 h-6 text-indigo-400" strokeWidth={2.5} />
                             </div>
                         </div>
                     </motion.div>
 
-                    {/* The Secure "Slot" Terminal */}
-                    <div className="relative z-30 w-[360px] h-[100px] bg-[#121214] border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center shadow-2xl backdrop-blur-xl">
-                        <div className="w-[280px] h-3 bg-black rounded-full overflow-hidden shadow-inner border border-white/5 relative">
+                    {/* The Secure Glassmorphism Terminal */}
+                    <div className="relative z-30 w-[380px] h-[110px] bg-[#121214]/80 border border-white/10 rounded-[2rem] p-5 flex flex-col items-center justify-center shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+                        <div className="w-[300px] h-3 bg-black rounded-full overflow-hidden shadow-inner border border-white/5 relative">
                             {/* Scanning Light */}
                             <motion.div
                                 animate={authPhase === "processing" ? { x: ["-100%", "300%"] } : { opacity: 0 }}
@@ -140,28 +151,28 @@ export default function AuthPage() {
                             />
                         </div>
 
-                        <div className="mt-4 flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-zinc-500">
-                            {authPhase === "idle" && <><Lock className="h-3 w-3" /> Awaiting Credentials</>}
-                            {authPhase === "processing" && <><Loader2 className="h-3 w-3 animate-spin text-indigo-400" /> Authenticating...</>}
-                            {authPhase === "success" && <><CheckCircle2 className="h-3 w-3 text-green-400" /> Access Granted</>}
+                        <div className="mt-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                            {authPhase === "idle" && <><Lock className="h-4 w-4" strokeWidth={2.5} /> Awaiting Credentials</>}
+                            {authPhase === "processing" && <><Loader2 className="h-4 w-4 animate-spin text-indigo-400" strokeWidth={2.5} /> Authenticating...</>}
+                            {authPhase === "success" && <><ShieldCheck className="h-4 w-4 text-emerald-400" strokeWidth={2.5} /> Access Granted</>}
                         </div>
                     </div>
 
-                    {/* Money / Data Dispensing Animation */}
-                    <div className="absolute top-[60%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[300px] pointer-events-none z-10 flex justify-center">
+                    {/* Data Stream Sync Animation */}
+                    <div className="absolute top-[65%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[350px] pointer-events-none z-10 flex justify-center">
                         <AnimatePresence>
                             {authPhase === "success" && (
                                 <>
-                                    {[...Array(6)].map((_, i) => (
+                                    {[...Array(5)].map((_, i) => (
                                         <motion.div
                                             key={i}
-                                            initial={{ y: 50, opacity: 0, scale: 0.5 }}
-                                            animate={{ y: -150 - (i * 20), opacity: [0, 1, 0], scale: 1 }}
-                                            transition={{ duration: 1.2, delay: i * 0.1, ease: "easeOut" }}
-                                            className="absolute bg-green-500/10 border border-green-500/30 px-4 py-2 rounded-lg flex items-center gap-2 text-green-400 font-mono text-sm backdrop-blur-md"
+                                            initial={{ y: 50, opacity: 0, scale: 0.8 }}
+                                            animate={{ y: -180 - (i * 25), opacity: [0, 1, 0], scale: 1 }}
+                                            transition={{ duration: 1.5, delay: i * 0.15, ease: "easeOut" }}
+                                            className="absolute bg-emerald-500/10 border border-emerald-500/20 px-5 py-2.5 rounded-xl flex items-center gap-2 text-emerald-400 font-mono text-sm font-bold shadow-xl shadow-emerald-500/5 backdrop-blur-md"
                                         >
-                                            <DollarSign className="h-4 w-4" />
-                                            SYNC_LEDGER_{i}
+                                            <Activity className="h-4 w-4" strokeWidth={2.5} />
+                                            SYNC_LEDGER_{i + 1}
                                         </motion.div>
                                     ))}
                                 </>
@@ -173,26 +184,23 @@ export default function AuthPage() {
             </div>
 
             {/* --- Right Panel: The Form --- */}
-            <div className="flex-1 flex items-center justify-center p-6 md:p-12 relative z-20">
-
-                {/* Mobile Background Decor */}
-                <div className="absolute inset-0 lg:hidden bg-[radial-gradient(ellipse_at_top,rgba(79,70,229,0.1)_0%,transparent_70%)] pointer-events-none"></div>
+            <div className="flex-1 flex items-center justify-center p-6 md:p-12 relative z-20 bg-[#050505]">
 
                 <div className="w-full max-w-md relative">
 
-                    <div className="flex items-center gap-3 mb-10">
-                        <Link href="/" className="flex items-center gap-2 font-bold tracking-wide text-xl text-white">
-                            <div className="bg-white text-black p-2 rounded-xl shadow-lg shadow-white/5">
-                                <Sparkles className="h-5 w-5" />
+                    <div className="flex items-center gap-3 mb-12">
+                        <Link href="/" className="flex items-center gap-2.5 font-black tracking-tight text-2xl text-white">
+                            <div className="bg-white text-black p-2 rounded-xl shadow-md shadow-white/10">
+                                <Sparkles className="h-5 w-5" strokeWidth={2.5} />
                             </div>
                             FPMS Studio
                         </Link>
                     </div>
 
-                    <h2 className="text-3xl font-semibold tracking-tight text-white mb-2">
+                    <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-white mb-2">
                         {isLogin ? "Welcome back." : "Initialize workspace."}
                     </h2>
-                    <p className="text-zinc-400 mb-8 text-sm font-light">
+                    <p className="text-zinc-400 mb-8 text-sm font-bold">
                         {isLogin ? "Authenticate to access your real-time financial engine." : "Set up your secure enterprise ledger environment."}
                     </p>
 
@@ -201,10 +209,9 @@ export default function AuthPage() {
                         type="button"
                         onClick={handleGoogleAuth}
                         disabled={authPhase !== "idle" || googleLoading}
-                        className="w-full bg-[#121214] hover:bg-[#1A1A1C] border border-white/10 text-white rounded-xl h-12 font-semibold transition-all mb-6 shadow-md relative overflow-hidden group"
+                        className="w-full bg-[#0A0A0B] hover:bg-[#121214] border border-white/10 text-white rounded-xl h-14 font-bold transition-all mb-8 shadow-sm focus:ring-4 focus:ring-indigo-500/20"
                     >
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-500"></div>
-                        {googleLoading ? <Loader2 className="h-5 w-5 animate-spin text-zinc-400" /> : (
+                        {googleLoading ? <Loader2 className="h-5 w-5 animate-spin text-zinc-500" strokeWidth={2.5} /> : (
                             <>
                                 <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
                                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -217,91 +224,96 @@ export default function AuthPage() {
                         )}
                     </Button>
 
-                    <div className="relative mb-6">
+                    <div className="relative mb-8">
                         <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-white/10" />
+                            <span className="w-full border-t border-white/5" />
                         </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-[#050505] px-3 text-zinc-500 font-semibold tracking-wider">Or continue with email</span>
+                        <div className="relative flex justify-center text-[10px]">
+                            <span className="bg-[#050505] px-4 text-zinc-500 font-extrabold uppercase tracking-widest">Or continue with email</span>
                         </div>
                     </div>
 
                     {/* Email/Password Form */}
-                    <form onSubmit={handleAuth} className="space-y-4">
-                        {!isLogin && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: "auto" }}
-                                className="grid grid-cols-2 gap-4"
-                            >
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">First Name</label>
-                                    <Input
-                                        value={firstName}
-                                        onChange={(e) => setFirstName(e.target.value)}
-                                        required={!isLogin}
-                                        className="bg-[#121214] border-white/10 text-white placeholder:text-zinc-600 rounded-xl h-12 focus-visible:ring-indigo-500/50"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Last Name</label>
-                                    <Input
-                                        value={lastName}
-                                        onChange={(e) => setLastName(e.target.value)}
-                                        required={!isLogin}
-                                        className="bg-[#121214] border-white/10 text-white placeholder:text-zinc-600 rounded-xl h-12 focus-visible:ring-indigo-500/50"
-                                    />
-                                </div>
-                            </motion.div>
-                        )}
+                    <form onSubmit={handleAuth} className="space-y-5">
+                        <AnimatePresence>
+                            {!isLogin && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="grid grid-cols-2 gap-4 overflow-hidden"
+                                >
+                                    <div className="space-y-2">
+                                        <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider block">First Name</label>
+                                        <Input
+                                            value={firstName}
+                                            onChange={(e) => setFirstName(e.target.value)}
+                                            required={!isLogin}
+                                            className="bg-[#0A0A0B] border-white/10 text-white font-bold placeholder:text-zinc-600 rounded-xl h-14 focus-visible:ring-4 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-500 shadow-sm transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider block">Last Name</label>
+                                        <Input
+                                            value={lastName}
+                                            onChange={(e) => setLastName(e.target.value)}
+                                            required={!isLogin}
+                                            className="bg-[#0A0A0B] border-white/10 text-white font-bold placeholder:text-zinc-600 rounded-xl h-14 focus-visible:ring-4 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-500 shadow-sm transition-all"
+                                        />
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
                         <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Work Email</label>
+                            <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider block">Work Email</label>
                             <Input
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                                className="bg-[#121214] border-white/10 text-white placeholder:text-zinc-600 rounded-xl h-12 focus-visible:ring-indigo-500/50"
+                                className="bg-[#0A0A0B] border-white/10 text-white font-bold placeholder:text-zinc-600 rounded-xl h-14 focus-visible:ring-4 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-500 shadow-sm transition-all"
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Password</label>
+                            <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider block">Password</label>
                             <Input
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
                                 minLength={6}
-                                className="bg-[#121214] border-white/10 text-white placeholder:text-zinc-600 rounded-xl h-12 focus-visible:ring-indigo-500/50"
+                                className="bg-[#0A0A0B] border-white/10 text-white font-bold placeholder:text-zinc-600 rounded-xl h-14 focus-visible:ring-4 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-500 shadow-sm transition-all"
                             />
                         </div>
 
                         <Button
                             type="submit"
                             disabled={authPhase !== "idle"}
-                            className={`w-full text-black rounded-xl h-12 font-bold mt-4 transition-all shadow-md ${authPhase === "success" ? "bg-green-400 hover:bg-green-500" : "bg-white hover:bg-zinc-200"
+                            className={`w-full rounded-xl h-14 font-extrabold text-sm mt-6 transition-all shadow-md ${authPhase === "success"
+                                    ? "bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20"
+                                    : "bg-white hover:bg-zinc-200 text-black shadow-white/10"
                                 }`}
                         >
-                            {authPhase === "processing" ? <Loader2 className="h-5 w-5 animate-spin" /> :
-                                authPhase === "success" ? <CheckCircle2 className="h-5 w-5" /> :
+                            {emailLoading && authPhase === "processing" ? <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.5} /> :
+                                authPhase === "success" ? <CheckCircle2 className="h-5 w-5" strokeWidth={2.5} /> :
                                     (
                                         <>
-                                            {isLogin ? "Secure Login" : "Provision Environment"} <ArrowRight className="ml-2 h-4 w-4" />
+                                            {isLogin ? "Secure Login" : "Provision Environment"} <ArrowRight className="ml-2 h-4 w-4" strokeWidth={3} />
                                         </>
                                     )}
                         </Button>
                     </form>
 
-                    <div className="mt-8 text-center">
+                    <div className="mt-10 text-center">
                         <button
                             type="button"
                             onClick={() => {
                                 setIsLogin(!isLogin);
                                 setAuthPhase("idle");
                             }}
-                            className="text-sm font-medium text-zinc-500 hover:text-white transition-colors"
+                            className="text-[13px] font-bold text-zinc-500 hover:text-white transition-colors"
                         >
                             {isLogin ? "Need a workspace? Create an account" : "Already have an account? Sign in"}
                         </button>
