@@ -9,7 +9,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import {
     Loader2, Building2, MoreVertical, Edit2, Trash2,
-    MapPin, Landmark, Banknote, Check, Wallet, ShieldAlert, X, ChevronDown, Search, CreditCard
+    MapPin, Landmark, Banknote, Check, Wallet, ShieldAlert, X, ChevronDown, Search, CreditCard, Copy
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -206,6 +206,15 @@ export default function AccountsPage() {
             setSubmitting(false);
             setAccountToDelete(null);
         }
+    };
+
+    // --- NEW: Copy Credentials to Clipboard ---
+    const handleCopyCredentials = (account: any, bankName: string, alias: string) => {
+        const textToCopy = `Institution: ${bankName}\nAlias: ${alias}\nAccount No: ${account.accountNumber || "—"}\nIFSC Code: ${account.ifscCode || "—"}\nBranch: ${account.branch || "—"}`;
+
+        navigator.clipboard.writeText(textToCopy)
+            .then(() => toast.success("Credentials copied to clipboard."))
+            .catch(() => toast.error("Failed to copy credentials."));
     };
 
     const filteredBanks = INDIAN_BANK_DIRECTORY.filter(b => b.name.toLowerCase().includes(bankSearch.toLowerCase()));
@@ -519,20 +528,32 @@ export default function AccountsPage() {
                                                     </div>
                                                 </div>
 
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger className="p-2 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-900 transition-all focus:outline-none">
-                                                        <MoreVertical className="w-5 h-5 font-bold" />
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="bg-white border border-slate-200 w-48 p-2 rounded-2xl shadow-xl mt-2">
-                                                        <DropdownMenuItem onClick={() => handleEditClick(account)} className="flex items-center gap-3 font-bold text-sm text-slate-700 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-50 focus:bg-slate-50 focus:text-slate-900">
-                                                            <Edit2 className="w-4 h-4 text-slate-400 font-bold" /> Edit Config
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuSeparator className="bg-slate-100 mx-2 my-1" />
-                                                        <DropdownMenuItem onClick={() => setAccountToDelete(account.id)} className="flex items-center gap-3 font-bold text-sm text-rose-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-rose-50 focus:bg-rose-50 focus:text-rose-700">
-                                                            <Trash2 className="w-4 h-4 font-bold" /> Decouple Asset
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
+                                                {/* Action Icons (Copy + Dropdown) */}
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    {!isCash && (
+                                                        <button
+                                                            onClick={() => handleCopyCredentials(account, bankIdentity.name, parsedAlias)}
+                                                            className="p-2 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-blue-600 transition-all focus:outline-none"
+                                                            title="Copy Routing Details"
+                                                        >
+                                                            <Copy className="w-5 h-5 font-bold" />
+                                                        </button>
+                                                    )}
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger className="p-2 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-900 transition-all focus:outline-none">
+                                                            <MoreVertical className="w-5 h-5 font-bold" />
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="bg-white border border-slate-200 w-48 p-2 rounded-2xl shadow-xl mt-2">
+                                                            <DropdownMenuItem onClick={() => handleEditClick(account)} className="flex items-center gap-3 font-bold text-sm text-slate-700 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-50 focus:bg-slate-50 focus:text-slate-900">
+                                                                <Edit2 className="w-4 h-4 text-slate-400 font-bold" /> Edit Config
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator className="bg-slate-100 mx-2 my-1" />
+                                                            <DropdownMenuItem onClick={() => setAccountToDelete(account.id)} className="flex items-center gap-3 font-bold text-sm text-rose-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-rose-50 focus:bg-rose-50 focus:text-rose-700">
+                                                                <Trash2 className="w-4 h-4 font-bold" /> Decouple Asset
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
                                             </div>
 
                                             <div className="mt-8 mb-2">
