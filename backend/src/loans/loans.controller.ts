@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } fro
 import { LoansService } from './loans.service';
 import { CreateLoanDto } from './dto/create-loan.dto';
 import { UpdateLoanDto } from './dto/update-loan.dto';
+import { PayLoanDto } from './dto/pay-loan.dto';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 
 @Controller('loans')
@@ -14,7 +15,7 @@ export class LoansController {
         return this.loansService.create(req.user.id, createLoanDto);
     }
 
-    // UPDATED: Fetches all loans (Active and Cleared) for local frontend filtering
+    // Fetches all loans (Active and Cleared) for local frontend filtering
     @Get()
     findAll(@Req() req) {
         return this.loansService.findAll(req.user.id);
@@ -33,5 +34,15 @@ export class LoansController {
     @Patch(':id/clear')
     markAsCleared(@Req() req, @Param('id') id: string) {
         return this.loansService.markAsCleared(id, req.user.id);
+    }
+
+    // --- NEW: Multi-Payment Route (Principal + Interest Split) ---
+    @Patch(':id/pay')
+    processPayment(
+        @Req() req,
+        @Param('id') id: string,
+        @Body() body: PayLoanDto
+    ) {
+        return this.loansService.processPartialPayment(id, req.user.id, body);
     }
 }

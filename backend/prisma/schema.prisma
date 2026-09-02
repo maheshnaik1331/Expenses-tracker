@@ -6,7 +6,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
- 
 }
 
 // ==========================================
@@ -76,7 +75,7 @@ model Account {
 }
 
 // ==========================================
-// 3. TRANSACTIONS & SELF-TRANSFERS
+// 3. TRANSACTIONS & MULTI-FUNDING ENGINE
 // ==========================================
 
 enum TransactionType {
@@ -85,28 +84,43 @@ enum TransactionType {
   TRANSFER // Internal transfer between user's own accounts
 }
 
+enum PaymentType {
+  STANDARD
+  PRINCIPAL
+  INTEREST
+  FEE
+}
+
 model Transaction {
-  id           String          @id @default(uuid())
-  type         TransactionType
-  amount       Float
-  category     String
-  note         String?
-  date         DateTime        @default(now())
+  id              String          @id @default(uuid())
+  type            TransactionType
+  paymentType     PaymentType     @default(STANDARD)
+  amount          Float
+  category        String
+  note            String?
+  date            DateTime        @default(now())
 
   // Primary Account (Source account for EXPENSE/TRANSFER, Target account for INCOME)
-  accountId    String
-  account      Account         @relation("SourceAccount", fields: [accountId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account         @relation("SourceAccount", fields: [accountId], references: [id], onDelete: Cascade)
 
   // Target Account (ONLY used when type === TRANSFER)
-  toAccountId  String?
-  toAccount    Account?        @relation("DestinationAccount", fields: [toAccountId], references: [id], onDelete: Cascade)
+  toAccountId     String?
+  toAccount       Account?        @relation("DestinationAccount", fields: [toAccountId], references: [id], onDelete: Cascade)
+
+  // Relational Auditing (Links to Bills and Loans)
+  loanId          String?
+  loan            Loan?           @relation(fields: [loanId], references: [id], onDelete: SetNull)
+
+  recurringBillId String?
+  recurringBill   RecurringBill?  @relation(fields: [recurringBillId], references: [id], onDelete: SetNull)
 
   // SaaS Tenant Link
-  userId       String
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 }
 
 // ==========================================
@@ -119,26 +133,30 @@ enum LoanDirection {
 }
 
 model Loan {
-  id           String        @id @default(uuid())
-  counterparty String        // Bank name, friend's name, or business
+  id             String          @id @default(uuid())
+  counterparty   String          // Bank name, friend's name, or business
   
-  direction    LoanDirection @default(BORROWED)
-  type         String        // 'PERSONAL', 'HOME', 'BUSINESS', 'GOLD'
+  direction      LoanDirection   @default(BORROWED)
+  type           String          // 'PERSONAL', 'HOME', 'BUSINESS', 'GOLD'
   
-  principal    Float         
-  monthlyRate  Float?        @default(0)
-  
-  startDate    DateTime      @default(now())
-  status       String        @default("ACTIVE") // 'ACTIVE' or 'CLEARED'
-  clearedDate  DateTime?
-  dueDate      DateTime?     // Target Payoff Date
+  principal      Float          
+  monthlyRate    Float?          @default(0)
+
+  interestType   String          @default("SIMPLE") 
+  startDate      DateTime        @default(now())
+  status         String          @default("ACTIVE") // 'ACTIVE' or 'CLEARED'
+  clearedDate    DateTime?
+  dueDate        DateTime?       // Target Payoff Date
   
   // SaaS Tenant Link
-  userId       String
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  // Payment History
+  transactions   Transaction[]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 // ==========================================
@@ -155,24 +173,27 @@ enum RecurrenceInterval {
 }
 
 model RecurringBill {
-  id           String             @id @default(uuid())
-  name         String             // e.g., "Apartment Rent", "AWS Hosting"
-  amount       Float
-  category     String             
+  id             String             @id @default(uuid())
+  name           String             // e.g., "Apartment Rent", "AWS Hosting"
+  amount         Float
+  category       String             
   
-  interval     RecurrenceInterval @default(MONTHLY)
-  customDays   Int?               
+  interval       RecurrenceInterval @default(MONTHLY)
+  customDays     Int?               
   
-  nextDueDate  DateTime           
-  lastPaidDate DateTime?          
-  status       String             @default("ACTIVE") 
+  nextDueDate    DateTime           
+  lastPaidDate   DateTime?          
+  status         String             @default("ACTIVE") 
 
-  accountId    String
-  account      Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  userId       String
-  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  // Payment History
+  transactions   Transaction[]
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 }

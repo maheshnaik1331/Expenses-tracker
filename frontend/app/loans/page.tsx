@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/navbar";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -12,7 +12,7 @@ import {
     Scale, Calendar, CheckCircle2, MoreVertical, ShieldCheck,
     User, Building2, Percent, Wallet, Home, Briefcase, Coins,
     Pencil, Trash2, Clock, X, ChevronDown, Check, ShieldAlert,
-    CheckSquare
+    CheckSquare, Banknote, ListCollapse, Receipt, Layers
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -64,16 +64,20 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label, placehol
                         className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden z-50"
                     >
                         <div className="max-h-56 overflow-y-auto p-1.5 scrollbar-thin scrollbar-thumb-slate-200">
-                            {options.map((opt: any) => (
-                                <div
-                                    key={opt.value}
-                                    onClick={() => { onChange(opt.value); setIsOpen(false); }}
-                                    className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
-                                >
-                                    <span className={`text-sm ${value === opt.value ? 'font-bold text-blue-600' : 'font-semibold text-slate-700'}`}>{opt.label}</span>
-                                    {value === opt.value && <Check className="w-4 h-4 text-blue-600 font-bold" />}
-                                </div>
-                            ))}
+                            {options.length === 0 ? (
+                                <p className="p-3 text-xs font-semibold text-slate-400 text-center">No options available</p>
+                            ) : (
+                                options.map((opt: any) => (
+                                    <div
+                                        key={opt.value}
+                                        onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                                        className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
+                                    >
+                                        <span className={`text-sm ${value === opt.value ? 'font-bold text-blue-600' : 'font-semibold text-slate-700'}`}>{opt.label}</span>
+                                        {value === opt.value && <Check className="w-4 h-4 text-blue-600 font-bold" />}
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </motion.div>
                 )}
@@ -82,28 +86,90 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label, placehol
     );
 };
 
-// Financial Calculation Engine (Now respects Cleared Dates)
-const calculateFinancials = (principal: number | string, monthlyRate: number | string, startDate: string, dueDate: string | null, clearedDate?: string | null) => {
-    const p = parseFloat(principal.toString()) || 0;
-    const r = parseFloat(monthlyRate.toString()) || 0;
+// --- DYNAMIC EVENT-SOURCED FINANCIAL ENGINE ---
+const calculateFinancials = (loan: any) => {
+    const originalPrincipal = parseFloat(loan.principal) || 0;
+    const rate = parseFloat(loan.monthlyRate) || 0;
+    const isCompound = loan.interestType === 'COMPOUND';
 
-    const start = new Date(startDate).getTime();
-    // Stop calculating interest on the day it was cleared, or use current date if no due date
-    const end = clearedDate ? new Date(clearedDate).getTime() : (dueDate ? new Date(dueDate).getTime() : new Date().getTime());
+    let currentPrincipal = originalPrincipal;
+    let totalAccruedInterest = 0;
+    let totalPaidInterest = 0;
+    let totalPaidPrincipal = 0;
 
-    if (end <= start || r === 0 || p === 0) return { interest: 0, total: p };
+    // 1. Sort all transactions chronologically (oldest first)
+    const sortedTxs = [...(loan.transactions || [])].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
 
-    const diffDays = (end - start) / (1000 * 60 * 60 * 24);
-    const months = diffDays / 30;
+    let lastDate = new Date(loan.startDate).getTime();
 
-    const interest = p * (r / 100) * months;
-    return { interest, total: p + interest };
+    // 2. Walk through history, stepping from transaction to transaction
+    sortedTxs.forEach((tx: any) => {
+        const txDate = new Date(tx.date).getTime();
+
+        // Calculate interest accrued between the last event and this transaction
+        const diffDays = Math.max(0, (txDate - lastDate) / (1000 * 60 * 60 * 24));
+        const monthsAccrued = diffDays / 30; // Standard 30-day financial month
+
+        let interestForPeriod = 0;
+        if (isCompound) {
+            // Compound Interest: Capitalizes unpaid interest
+            const principalForInterest = currentPrincipal + Math.max(0, totalAccruedInterest - totalPaidInterest);
+            interestForPeriod = principalForInterest * (Math.pow(1 + (rate / 100), monthsAccrued) - 1);
+        } else {
+            // Simple Interest: Only calculates on remaining true principal
+            interestForPeriod = currentPrincipal * (rate / 100) * monthsAccrued;
+        }
+
+        totalAccruedInterest += interestForPeriod;
+
+        // Apply the payment
+        if (tx.paymentType === 'PRINCIPAL') {
+            currentPrincipal -= tx.amount;
+            totalPaidPrincipal += tx.amount;
+        } else if (tx.paymentType === 'INTEREST') {
+            totalPaidInterest += tx.amount;
+        }
+
+        // Move the timeline forward
+        lastDate = txDate;
+    });
+
+    // 3. Calculate final interest from the last transaction up to today (or the cleared date)
+    const endDate = loan.clearedDate ? new Date(loan.clearedDate).getTime() : new Date().getTime();
+
+    if (endDate > lastDate) {
+        const finalDiffDays = (endDate - lastDate) / (1000 * 60 * 60 * 24);
+        const finalMonthsAccrued = finalDiffDays / 30;
+
+        if (isCompound) {
+            const principalForInterest = currentPrincipal + Math.max(0, totalAccruedInterest - totalPaidInterest);
+            totalAccruedInterest += principalForInterest * (Math.pow(1 + (rate / 100), finalMonthsAccrued) - 1);
+        } else {
+            totalAccruedInterest += currentPrincipal * (rate / 100) * finalMonthsAccrued;
+        }
+    }
+
+    // 4. Compile the final ledger state
+    const outstandingInterest = Math.max(0, totalAccruedInterest - totalPaidInterest);
+
+    return {
+        originalPrincipal,
+        currentPrincipal: Math.max(0, currentPrincipal),
+        totalAccruedInterest,
+        totalPaidInterest,
+        outstandingInterest,
+        totalPaidPrincipal,
+        totalOutstanding: Math.max(0, currentPrincipal) + outstandingInterest
+    };
 };
 
 export default function LoansPage() {
     const { user, loading } = useAuth();
 
     const [loans, setLoans] = useState<any[]>([]);
+    const [accounts, setAccounts] = useState<any[]>([]);
     const [fetching, setFetching] = useState(true);
     const [submitting, setSubmitting] = useState(false);
 
@@ -112,6 +178,8 @@ export default function LoansPage() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [loanToDelete, setLoanToDelete] = useState<string | null>(null);
     const [loanToSettle, setLoanToSettle] = useState<any | null>(null);
+    const [loanToPay, setLoanToPay] = useState<any | null>(null);
+    const [loanHistory, setLoanHistory] = useState<any | null>(null);
 
     // Filters
     const [filterMode, setFilterMode] = useState<"ALL" | "BORROWED" | "LENT">("ALL");
@@ -119,6 +187,7 @@ export default function LoansPage() {
 
     const [form, setForm] = useState({
         direction: "BORROWED" as "BORROWED" | "LENT",
+        interestType: "SIMPLE",
         counterparty: "",
         type: "PERSONAL",
         principal: "",
@@ -127,25 +196,40 @@ export default function LoansPage() {
         dueDate: ""
     });
 
-    const fetchLoans = async () => {
+    // Payment Form State (Explicit Date)
+    const [paymentPrincipal, setPaymentPrincipal] = useState("");
+    const [paymentInterest, setPaymentInterest] = useState("");
+    const [paymentAccountId, setPaymentAccountId] = useState("");
+    const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+
+    const fetchLedgerData = async () => {
         try {
             setFetching(true);
-            const res = await api.get("/loans");
-            setLoans(res.data || []);
+            const [loansRes, accountsRes] = await Promise.all([
+                api.get("/loans"),
+                api.get("/accounts")
+            ]);
+            setLoans(loansRes.data || []);
+            setAccounts(accountsRes.data || []);
+
+            if (accountsRes.data.length > 0 && !paymentAccountId) {
+                setPaymentAccountId(accountsRes.data[0].id);
+            }
         } catch (err) {
-            toast.error("Failed to synchronize credit records.");
+            toast.error("Failed to synchronize ledger records.");
         } finally {
             setFetching(false);
         }
     };
 
     useEffect(() => {
-        if (!loading && user) fetchLoans();
+        if (!loading && user) fetchLedgerData();
     }, [user, loading]);
 
     const resetForm = () => {
         setForm({
             direction: "BORROWED",
+            interestType: "SIMPLE",
             counterparty: "",
             type: "PERSONAL",
             principal: "",
@@ -160,6 +244,7 @@ export default function LoansPage() {
     const handleEditClick = (loan: any) => {
         setForm({
             direction: loan.direction,
+            interestType: loan.interestType || "SIMPLE",
             counterparty: loan.counterparty,
             type: loan.type,
             principal: loan.principal.toString(),
@@ -171,13 +256,50 @@ export default function LoansPage() {
         setIsFormOpen(true);
     };
 
+    const openPaymentModal = (loan: any) => {
+        setLoanToPay(loan);
+        setPaymentPrincipal("");
+        setPaymentInterest("");
+        setPaymentDate(new Date().toISOString().split('T')[0]);
+        if (accounts.length > 0) setPaymentAccountId(accounts[0].id);
+    };
+
+    const confirmPayment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!loanToPay || !paymentAccountId || !paymentDate) return;
+
+        const pAmount = parseFloat(paymentPrincipal) || 0;
+        const iAmount = parseFloat(paymentInterest) || 0;
+
+        if (pAmount <= 0 && iAmount <= 0) {
+            return toast.error("Payment amount must be greater than zero.");
+        }
+
+        try {
+            setSubmitting(true);
+            await api.patch(`/loans/${loanToPay.id}/pay`, {
+                accountId: paymentAccountId,
+                principalAmount: pAmount,
+                interestAmount: iAmount,
+                date: new Date(paymentDate).toISOString()
+            });
+            toast.success("Payment recorded and ledger updated.");
+            fetchLedgerData();
+            setLoanToPay(null);
+        } catch (err) {
+            toast.error("Failed to process payment.");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     const confirmDeletion = async () => {
         if (!loanToDelete) return;
         try {
             setSubmitting(true);
             await api.delete(`/loans/${loanToDelete}`);
             toast.success("Agreement purged from ledger.");
-            fetchLoans();
+            fetchLedgerData();
         } catch (err) {
             toast.error("Failed to delete agreement.");
         } finally {
@@ -192,7 +314,7 @@ export default function LoansPage() {
             setSubmitting(true);
             await api.patch(`/loans/${loanToSettle.id}/clear`);
             toast.success(`${loanToSettle.counterparty} agreement marked as settled.`);
-            fetchLoans();
+            fetchLedgerData();
         } catch (err) {
             toast.error("Failed to update agreement status.");
         } finally {
@@ -211,6 +333,7 @@ export default function LoansPage() {
                 counterparty: form.counterparty,
                 direction: form.direction,
                 type: form.type,
+                interestType: form.interestType,
                 principal: parseFloat(form.principal),
                 monthlyRate: form.monthlyRate ? parseFloat(form.monthlyRate) : 0,
                 startDate: new Date(form.startDate).toISOString(),
@@ -226,7 +349,7 @@ export default function LoansPage() {
             }
 
             setIsFormOpen(false);
-            fetchLoans();
+            fetchLedgerData();
         } catch (err) {
             toast.error("Failed to commit ledger transaction.");
         } finally {
@@ -234,15 +357,13 @@ export default function LoansPage() {
         }
     };
 
-    // Calculate active KPIs only
     const activeLoans = loans.filter(l => l.status === "ACTIVE");
-    const totalBorrowed = activeLoans.filter(l => l.direction === "BORROWED").reduce((sum, l) => sum + calculateFinancials(l.principal, l.monthlyRate, l.startDate, l.dueDate).total, 0);
-    const totalLent = activeLoans.filter(l => l.direction === "LENT").reduce((sum, l) => sum + calculateFinancials(l.principal, l.monthlyRate, l.startDate, l.dueDate).total, 0);
+    const totalBorrowed = activeLoans.filter(l => l.direction === "BORROWED").reduce((sum, l) => sum + calculateFinancials(l).totalOutstanding, 0);
+    const totalLent = activeLoans.filter(l => l.direction === "LENT").reduce((sum, l) => sum + calculateFinancials(l).totalOutstanding, 0);
     const netExposure = totalLent - totalBorrowed;
 
     const filteredLoans = loans.filter(l => (filterMode === "ALL" || l.direction === filterMode) && l.status === statusFilter);
-
-    const formPreview = calculateFinancials(form.principal, form.monthlyRate, form.startDate, form.dueDate);
+    const accountOptions = accounts.map(a => ({ label: `${a.name} (₹${a.currentBalance})`, value: a.id }));
 
     const fadeUp: Variants = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { type: "spring", damping: 25 } } };
     const modalVariants: Variants = {
@@ -274,7 +395,7 @@ export default function LoansPage() {
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 border-b border-slate-200/60 pb-8">
                         <div>
                             <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Credit Matrix</h1>
-                            <p className="text-slate-500 text-sm mt-2 font-semibold">Manage active liabilities, receivables, and settled agreements.</p>
+                            <p className="text-slate-500 text-sm mt-2 font-semibold">Manage active liabilities, receivables, and processed settlements.</p>
                         </div>
 
                         <button onClick={resetForm} className="flex items-center justify-center gap-2 bg-blue-600 text-white font-bold text-sm px-6 py-3.5 rounded-xl shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95 w-full sm:w-auto">
@@ -282,7 +403,7 @@ export default function LoansPage() {
                         </button>
                     </motion.div>
 
-                    {/* Premium KPI Strip (Active Exposure Only) */}
+                    {/* Premium KPI Strip */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
                         <div className="bg-white p-6 rounded-[1.5rem] shadow-sm border border-slate-200/60 flex items-center gap-5 hover:shadow-md transition-all group">
                             <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl shrink-0 group-hover:scale-105 transition-transform"><ArrowDownRight className="w-6 h-6 font-bold" /></div>
@@ -347,42 +468,52 @@ export default function LoansPage() {
                                 const typeIcon = LOAN_TYPES.find(t => t.id === loan.type)?.icon || Building2;
                                 const Icon = typeIcon;
 
-                                const metrics = calculateFinancials(loan.principal, loan.monthlyRate, loan.startDate, loan.dueDate, loan.clearedDate);
+                                const metrics = calculateFinancials(loan);
 
                                 return (
                                     <motion.div key={loan.id} variants={fadeUp} whileHover={{ y: -6, scale: 1.01 }} transition={{ type: "spring", stiffness: 400, damping: 30 }} className={`bg-white rounded-[2rem] shadow-sm border hover:shadow-xl hover:border-slate-300 transition-all duration-300 flex flex-col relative group overflow-hidden ${isCleared ? 'opacity-80 grayscale-[0.2]' : ''}`}>
-                                        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/60 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none transform -translate-x-full group-hover:translate-x-full ease-in-out z-20"></div>
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-slate-100/60 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none transform -translate-x-full group-hover:translate-x-full ease-in-out z-20"></div>
 
                                         <div className="p-6 border-b border-slate-100 flex justify-between items-start gap-4 relative z-10">
                                             <div className="flex items-center gap-4 min-w-0">
-                                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm ${isCleared ? 'bg-slate-50 border-slate-200 text-slate-500' : isBorrowed ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-emerald-50 border-emerald-100 text-emerald-600'}`}>
+                                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm ${isCleared ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-white border-slate-200 text-slate-900'}`}>
                                                     <Icon className="w-7 h-7 font-bold" />
                                                 </div>
                                                 <div className="min-w-0">
                                                     <h3 className="text-lg font-bold text-slate-900 truncate tracking-tight">{loan.counterparty}</h3>
-                                                    <div className={`text-[10px] font-bold uppercase tracking-widest mt-1.5 flex items-center gap-1.5 ${isCleared ? 'text-slate-500' : isBorrowed ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                    <div className={`text-[10px] font-bold uppercase tracking-widest mt-1.5 flex items-center gap-1.5 ${isCleared ? 'text-slate-500' : 'text-slate-600'}`}>
                                                         {isBorrowed ? <ArrowDownRight className="w-3.5 h-3.5 font-bold" /> : <ArrowUpRight className="w-3.5 h-3.5 font-bold" />}
                                                         {isCleared ? "Settled Agreement" : isBorrowed ? "Liability" : "Receivable"}
                                                     </div>
                                                 </div>
                                             </div>
 
+                                            {/* Monochromatic Professional Menu */}
                                             <DropdownMenu>
-                                                <DropdownMenuTrigger className="p-2.5 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-700 transition-all focus:outline-none">
+                                                <DropdownMenuTrigger className="p-2.5 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-900 transition-all focus:outline-none">
                                                     <MoreVertical className="w-5 h-5 font-bold" />
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" className="bg-white border border-slate-200 w-48 p-2 rounded-2xl shadow-xl mt-2">
-                                                    <DropdownMenuItem onClick={() => handleEditClick(loan)} className="flex items-center gap-3 font-bold text-sm text-blue-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-blue-50 focus:bg-blue-50">
-                                                        <Pencil className="w-4 h-4 font-bold" /> Edit Config
+                                                <DropdownMenuContent align="end" className="bg-white border border-slate-200 w-56 p-2 rounded-2xl shadow-xl mt-2">
+
+                                                    <DropdownMenuItem onClick={() => setLoanHistory(loan)} className="flex items-center gap-3 font-bold text-sm text-slate-900 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-100 focus:bg-slate-100">
+                                                        <ListCollapse className="w-4 h-4 font-bold" /> View Ledger History
                                                     </DropdownMenuItem>
+
                                                     {!isCleared && (
                                                         <>
                                                             <DropdownMenuSeparator className="bg-slate-100 mx-2 my-1" />
-                                                            <DropdownMenuItem onClick={() => setLoanToSettle(loan)} className="flex items-center gap-3 font-bold text-sm text-emerald-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-emerald-50 focus:bg-emerald-50">
+                                                            <DropdownMenuItem onClick={() => openPaymentModal(loan)} className="flex items-center gap-3 font-bold text-sm text-slate-700 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-50 focus:bg-slate-50">
+                                                                <Banknote className="w-4 h-4 font-bold" /> Record Payment
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => handleEditClick(loan)} className="flex items-center gap-3 font-bold text-sm text-slate-700 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-50 focus:bg-slate-50">
+                                                                <Pencil className="w-4 h-4 font-bold" /> Edit Config
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => setLoanToSettle(loan)} className="flex items-center gap-3 font-bold text-sm text-slate-700 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-50 focus:bg-slate-50">
                                                                 <CheckCircle2 className="w-4 h-4 font-bold" /> Mark Settled
                                                             </DropdownMenuItem>
                                                         </>
                                                     )}
+
                                                     <DropdownMenuSeparator className="bg-slate-100 mx-2 my-1" />
                                                     <DropdownMenuItem onClick={() => setLoanToDelete(loan.id)} className="flex items-center gap-3 font-bold text-sm text-rose-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-rose-50 focus:bg-rose-50">
                                                         <Trash2 className="w-4 h-4 font-bold" /> Purge Record
@@ -394,28 +525,46 @@ export default function LoansPage() {
                                         <div className="p-6 flex-1 relative z-10">
                                             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">{isCleared ? "Final Settled Value" : "Projected Obligation"}</span>
                                             <span className={`text-4xl font-bold block tracking-tight font-mono truncate ${isCleared ? 'text-slate-700' : 'text-slate-900'}`}>
-                                                ₹{metrics.total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                                                ₹{metrics.totalOutstanding.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                                             </span>
 
-                                            <div className="mt-6 p-4 bg-slate-50 border border-slate-200/60 rounded-xl flex items-center justify-between">
-                                                <div>
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Principal</span>
-                                                    <span className="text-sm font-bold text-slate-700 font-mono">₹{loan.principal.toLocaleString("en-IN")}</span>
+                                            {/* Deep Analytics Breakdown */}
+                                            <div className="mt-6 p-4 bg-slate-50 border border-slate-200/60 rounded-xl space-y-3">
+                                                <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
+                                                    <div>
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-0.5">Principal Balance</span>
+                                                        <span className="text-[9px] font-semibold text-slate-400">Originally ₹{metrics.originalPrincipal.toLocaleString("en-IN")}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-sm font-bold text-slate-900 font-mono">₹{metrics.currentPrincipal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                                        {metrics.totalPaidPrincipal > 0 && (
+                                                            <span className="text-[9px] font-bold text-emerald-500 block">(-₹{metrics.totalPaidPrincipal.toLocaleString("en-IN", { maximumFractionDigits: 0 })} paid)</span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Accrued Interest</span>
-                                                    <span className={`text-sm font-bold font-mono ${isCleared ? 'text-slate-500' : 'text-rose-500'}`}>+₹{metrics.interest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-0.5">Unpaid Interest</span>
+                                                        <span className="text-[9px] font-semibold text-slate-400">Total Accrued: ₹{metrics.totalAccruedInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className={`text-sm font-bold font-mono ${isCleared ? 'text-slate-500' : 'text-rose-500'}`}>+₹{metrics.outstandingInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                                        {metrics.totalPaidInterest > 0 && (
+                                                            <span className="text-[9px] font-bold text-emerald-500 block">(-₹{metrics.totalPaidInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })} paid)</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
 
                                             <div className="mt-6 flex items-center justify-between">
                                                 <div>
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Interest Rate</span>
-                                                    <span className="text-sm font-bold text-slate-700 font-mono">{loan.monthlyRate}% / mo</span>
+                                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Interest Logic</span>
+                                                    <span className="text-sm font-bold text-slate-900 font-mono">{loan.monthlyRate}% / mo ({loan.interestType})</span>
                                                 </div>
                                                 <div className="text-right">
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Category</span>
-                                                    <span className="text-sm font-bold text-slate-700">{loan.type}</span>
+                                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Category</span>
+                                                    <span className="text-sm font-bold text-slate-900">{loan.type}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -426,16 +575,16 @@ export default function LoansPage() {
                                                     <Calendar className="w-3.5 h-3.5 font-bold" />
                                                     <span className="text-[10px] font-bold uppercase tracking-widest">Originated</span>
                                                 </div>
-                                                <span className="text-xs font-bold text-slate-700 block truncate">
+                                                <span className="text-xs font-bold text-slate-900 block truncate">
                                                     {new Date(loan.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </span>
                                             </div>
-                                            <div className={`flex-1 p-5 rounded-br-[2rem] ${isCleared ? 'bg-slate-100' : 'bg-blue-50/50'}`}>
-                                                <div className={`flex items-center gap-1.5 mb-1.5 ${isCleared ? 'text-slate-500' : 'text-blue-500'}`}>
+                                            <div className={`flex-1 p-5 rounded-br-[2rem] ${isCleared ? 'bg-slate-100' : 'bg-slate-100/50'}`}>
+                                                <div className={`flex items-center gap-1.5 mb-1.5 text-slate-500`}>
                                                     {isCleared ? <CheckSquare className="w-3.5 h-3.5 font-bold" /> : <Clock className="w-3.5 h-3.5 font-bold" />}
                                                     <span className="text-[10px] font-bold uppercase tracking-widest">{isCleared ? "Cleared On" : "Target Payoff"}</span>
                                                 </div>
-                                                <span className={`text-xs font-bold block truncate ${isCleared ? 'text-slate-700' : 'text-blue-700'}`}>
+                                                <span className={`text-xs font-bold block truncate text-slate-900`}>
                                                     {isCleared ? new Date(loan.clearedDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : loan.dueDate ? new Date(loan.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : "Not Set"}
                                                 </span>
                                             </div>
@@ -447,20 +596,130 @@ export default function LoansPage() {
                     )}
                 </main>
 
+                {/* --- GLASSMORPHISM LEDGER HISTORY MODAL --- */}
+                <AnimatePresence>
+                    {loanHistory && (
+                        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setLoanHistory(null)} />
+                            <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+
+                                <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-900 tracking-tight">Ledger History</h3>
+                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mt-1">{loanHistory.counterparty}</p>
+                                    </div>
+                                    <button onClick={() => setLoanHistory(null)} className="p-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-400 hover:text-slate-900 rounded-full transition-colors shadow-sm"><X className="h-5 w-5 font-bold" /></button>
+                                </div>
+
+                                <div className="p-6 overflow-y-auto flex-1 bg-white">
+                                    {!loanHistory.transactions || loanHistory.transactions.length === 0 ? (
+                                        <div className="py-12 text-center flex flex-col items-center">
+                                            <Receipt className="w-10 h-10 text-slate-300 mb-4" />
+                                            <p className="text-sm font-bold text-slate-500">No payment history recorded.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {loanHistory.transactions.map((tx: any) => (
+                                                <div key={tx.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex justify-between items-center">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="p-2 bg-white rounded-xl border border-slate-200 shadow-sm shrink-0">
+                                                            {tx.paymentType === 'PRINCIPAL' ? <Building2 className="w-4 h-4 text-slate-700" /> : <Percent className="w-4 h-4 text-slate-700" />}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-slate-900">{tx.paymentType === 'PRINCIPAL' ? 'Principal Payment' : 'Interest Payment'}</p>
+                                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                                                                {new Date(tx.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-base font-bold font-mono text-slate-900">
+                                                        ₹{tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* --- GLASSMORPHISM PAYMENT MODAL (SPLIT + DATE) --- */}
+                <AnimatePresence>
+                    {loanToPay && (
+                        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => !submitting && setLoanToPay(null)} />
+                            <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden">
+
+                                <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                                    <h3 className="text-xl font-bold text-slate-900 tracking-tight">Record Settlement</h3>
+                                    <button onClick={() => setLoanToPay(null)} className="p-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-400 hover:text-slate-900 rounded-full transition-colors shadow-sm"><X className="h-5 w-5 font-bold" /></button>
+                                </div>
+
+                                <form onSubmit={confirmPayment} className="p-8 space-y-6">
+                                    <div className="text-center bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-inner">
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Target Instrument</p>
+                                        <p className="font-bold text-xl text-slate-900 tracking-tight">{loanToPay.counterparty}</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Transaction Date</label>
+                                        <div className="relative w-full">
+                                            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
+                                            <input
+                                                type="date" required value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)}
+                                                className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm modern-date-input cursor-pointer"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="col-span-2 sm:col-span-1">
+                                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Toward Principal</label>
+                                            <input
+                                                type="number" step="0.01" placeholder="0.00" value={paymentPrincipal} onChange={(e) => setPaymentPrincipal(e.target.value)}
+                                                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
+                                            />
+                                        </div>
+                                        <div className="col-span-2 sm:col-span-1">
+                                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Toward Interest</label>
+                                            <input
+                                                type="number" step="0.01" placeholder="0.00" value={paymentInterest} onChange={(e) => setPaymentInterest(e.target.value)}
+                                                className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-base font-bold font-mono text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <PremiumDropdown label="Funding Source" value={paymentAccountId} options={accountOptions} onChange={setPaymentAccountId} icon={Wallet} />
+                                    </div>
+
+                                    <div className="pt-4 border-t border-slate-100">
+                                        <button type="submit" disabled={submitting || accounts.length === 0} className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-4 text-sm font-bold transition-all active:scale-95 flex justify-center items-center gap-2 shadow-md shadow-blue-600/20 disabled:opacity-50">
+                                            {submitting ? <Loader2 className="h-5 w-5 animate-spin font-bold" /> : <><CheckCircle2 className="h-5 w-5 font-bold" /> Process Payment</>}
+                                        </button>
+                                    </div>
+                                </form>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
                 {/* --- GLASSMORPHISM SETTLE MODAL --- */}
                 <AnimatePresence>
                     {loanToSettle && (
                         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => !submitting && setLoanToSettle(null)} />
                             <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] p-8 max-w-md w-full shadow-2xl">
-                                <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-6 border border-emerald-100">
-                                    <CheckCircle2 className="w-6 h-6 text-emerald-600 font-bold" />
+                                <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-6 border border-slate-200">
+                                    <CheckCircle2 className="w-6 h-6 text-slate-900 font-bold" />
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-900 mb-2">Mark Agreement Settled?</h3>
-                                <p className="text-sm font-semibold text-slate-500 mb-8">This will lock the instrument, freeze all interest calculations at today's date, and move it to your settled archives.</p>
+                                <p className="text-sm font-bold text-slate-500 mb-8">This will lock the instrument, freeze all interest calculations at today's date, and move it to your settled archives.</p>
                                 <div className="flex gap-3">
-                                    <button onClick={() => setLoanToSettle(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold py-3 rounded-xl transition-colors">Cancel</button>
-                                    <button onClick={confirmSettlement} disabled={submitting} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold py-3 rounded-xl flex justify-center items-center shadow-md disabled:opacity-50">
+                                    <button onClick={() => setLoanToSettle(null)} className="flex-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-bold py-3 rounded-xl transition-colors shadow-sm">Cancel</button>
+                                    <button onClick={confirmSettlement} disabled={submitting} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-3 rounded-xl flex justify-center items-center shadow-md disabled:opacity-50 shadow-blue-600/20">
                                         {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Settlement"}
                                     </button>
                                 </div>
@@ -479,9 +738,9 @@ export default function LoansPage() {
                                     <ShieldAlert className="w-6 h-6 text-rose-600 font-bold" />
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-900 mb-2">Purge Agreement?</h3>
-                                <p className="text-sm font-semibold text-slate-500 mb-8">This will completely erase the contract from your matrix. This action cannot be reversed.</p>
+                                <p className="text-sm font-bold text-slate-500 mb-8">This will completely erase the contract from your matrix. This action cannot be reversed.</p>
                                 <div className="flex gap-3">
-                                    <button onClick={() => setLoanToDelete(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold py-3 rounded-xl transition-colors">Cancel</button>
+                                    <button onClick={() => setLoanToDelete(null)} className="flex-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-bold py-3 rounded-xl transition-colors shadow-sm">Cancel</button>
                                     <button onClick={confirmDeletion} disabled={submitting} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold py-3 rounded-xl flex justify-center items-center shadow-md disabled:opacity-50">
                                         {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
                                     </button>
@@ -500,19 +759,35 @@ export default function LoansPage() {
 
                                 <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 bg-slate-50/80 rounded-t-[2rem]">
                                     <h2 className="text-xl font-bold text-slate-900 tracking-tight">{editingId ? "Update Instrument" : "Establish Instrument"}</h2>
-                                    <button onClick={() => setIsFormOpen(false)} className="p-2 text-slate-400 hover:text-slate-700 bg-white border border-slate-200 rounded-full shadow-sm"><X className="w-4 h-4 font-bold" /></button>
+                                    <button onClick={() => setIsFormOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 bg-white border border-slate-200 rounded-full shadow-sm"><X className="w-4 h-4 font-bold" /></button>
                                 </div>
 
                                 <div className="overflow-y-auto p-6 sm:p-8">
                                     <form id="loanForm" onSubmit={handleSubmit} className="space-y-6">
 
-                                        <div className="flex p-1.5 bg-slate-100 border border-slate-200 rounded-xl">
-                                            <button type="button" onClick={() => setForm({ ...form, direction: "BORROWED" })} className={`flex-1 py-2.5 flex items-center justify-center gap-2 text-[11px] font-extrabold uppercase tracking-wider rounded-lg transition-all ${form.direction === "BORROWED" ? "bg-white text-rose-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-700"}`}>
-                                                <ArrowDownRight className="w-3.5 h-3.5 font-bold" /> Liability
-                                            </button>
-                                            <button type="button" onClick={() => setForm({ ...form, direction: "LENT" })} className={`flex-1 py-2.5 flex items-center justify-center gap-2 text-[11px] font-extrabold uppercase tracking-wider rounded-lg transition-all ${form.direction === "LENT" ? "bg-white text-emerald-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-700"}`}>
-                                                <ArrowUpRight className="w-3.5 h-3.5 font-bold" /> Asset
-                                            </button>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="col-span-2 sm:col-span-1">
+                                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Direction</label>
+                                                <div className="flex p-1.5 bg-slate-100 border border-slate-200 rounded-xl">
+                                                    <button type="button" onClick={() => setForm({ ...form, direction: "BORROWED" })} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${form.direction === "BORROWED" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-700"}`}>
+                                                        Liability
+                                                    </button>
+                                                    <button type="button" onClick={() => setForm({ ...form, direction: "LENT" })} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${form.direction === "LENT" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-700"}`}>
+                                                        Asset
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="col-span-2 sm:col-span-1">
+                                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Logic</label>
+                                                <div className="flex p-1.5 bg-slate-100 border border-slate-200 rounded-xl">
+                                                    <button type="button" onClick={() => setForm({ ...form, interestType: "SIMPLE" })} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${form.interestType === "SIMPLE" ? "bg-white text-blue-600 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-700"}`}>
+                                                        Simple
+                                                    </button>
+                                                    <button type="button" onClick={() => setForm({ ...form, interestType: "COMPOUND" })} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${form.interestType === "COMPOUND" ? "bg-white text-blue-600 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-700"}`}>
+                                                        Compound
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div>
@@ -571,7 +846,7 @@ export default function LoansPage() {
                                 </div>
 
                                 <div className="p-6 border-t border-slate-100 bg-slate-50/80 rounded-b-[2rem] flex justify-end gap-3 shrink-0">
-                                    <button onClick={() => setIsFormOpen(false)} className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-sm">Cancel</button>
+                                    <button onClick={() => setIsFormOpen(false)} className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-900 text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-sm">Cancel</button>
                                     <button form="loanForm" type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-8 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 shadow-md shadow-blue-600/20">
                                         {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : editingId ? <Pencil className="w-4 h-4 font-bold" /> : <ShieldCheck className="w-4 h-4 font-bold" />}
                                         {editingId ? "Update Instrument" : "Lock Agreement"}

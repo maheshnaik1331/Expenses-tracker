@@ -17,6 +17,10 @@ export class CreateLoanDto {
     @IsNumber()
     monthlyRate?: number;
 
+    @IsOptional()
+    @IsString()
+    interestType?: string;
+
     @IsDateString()
     startDate: string;
 
