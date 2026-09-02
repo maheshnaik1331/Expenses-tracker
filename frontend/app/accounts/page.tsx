@@ -23,16 +23,12 @@ import {
 import { INDIAN_BANK_DIRECTORY } from "@/lib/bank-directory";
 
 // --- THE STRICT DIRECTORY RESOLVER ---
-// This no longer guesses based on IFSC. It takes the exact Bank ID we secretly saved
-// to the database and forces the correct logo and branding to appear.
 const getDirectoryBank = (bankId: string | null, fallbackAlias: string) => {
-    // 1. Strict Match (Guarantees the logo appears at all costs)
     if (bankId) {
         const matched = INDIAN_BANK_DIRECTORY.find(b => b.id === bankId);
         if (matched) return matched;
     }
 
-    // 2. Legacy Fallback (Just in case you have old accounts created before this update)
     const aliasLower = fallbackAlias.toLowerCase();
     const matchedByName = INDIAN_BANK_DIRECTORY.find(b =>
         aliasLower.includes(b.name.toLowerCase()) ||
@@ -147,12 +143,11 @@ export default function AccountsPage() {
         const mode = account.type === "CASH" || account.isLiquid && !account.accountNumber ? "CASH" : "BANK";
         setDialogMode(mode);
 
-        // Deserialize the strictly saved Bank ID and Alias
         const [parsedBankId, parsedAlias] = account.name.includes("::")
             ? account.name.split("::")
-            : [INDIAN_BANK_DIRECTORY[0].id, account.name];
+            : [INDIAN_BANK_DIRECTORY[0]?.id, account.name];
 
-        if (mode === "BANK") setSelectedBankId(parsedBankId);
+        if (mode === "BANK" && parsedBankId) setSelectedBankId(parsedBankId);
 
         setForm({
             name: parsedAlias,
@@ -171,8 +166,6 @@ export default function AccountsPage() {
             setSubmitting(true);
             const isCash = dialogMode === "CASH";
 
-            // STRICT SERIALIZATION: We merge the Exact Bank ID with the User's Alias
-            // This guarantees the logo will always load, regardless of what they typed.
             const serializedName = isCash ? form.name : `${selectedBankId}::${form.name}`;
 
             const payload = {
@@ -215,11 +208,9 @@ export default function AccountsPage() {
         }
     };
 
-    // Filter using the central directory
     const filteredBanks = INDIAN_BANK_DIRECTORY.filter(b => b.name.toLowerCase().includes(bankSearch.toLowerCase()));
     const selectedBankData = INDIAN_BANK_DIRECTORY.find(b => b.id === selectedBankId);
 
-    // --- High-End Animation Variants ---
     const fadeUp: Variants = {
         hidden: { opacity: 0, y: 30 },
         show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
@@ -339,7 +330,7 @@ export default function AccountsPage() {
                                     {/* Modal Body */}
                                     <div className="overflow-y-auto p-6 sm:p-8">
                                         <form id="accountForm" onSubmit={handleSubmit} className="space-y-6">
-                                            {dialogMode === "BANK" && (
+                                            {dialogMode === "BANK" && !editingAccountId && (
                                                 <div className="relative z-50" ref={dropdownRef}>
                                                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Select Institution Template</label>
                                                     <div
@@ -382,7 +373,6 @@ export default function AccountsPage() {
                                                                                 key={bank.id}
                                                                                 onClick={() => {
                                                                                     setSelectedBankId(bank.id);
-                                                                                    // Auto-fill the alias with the bank name if empty
                                                                                     if (!form.name || form.name === (INDIAN_BANK_DIRECTORY.find(b => b.id === selectedBankId)?.name || "")) {
                                                                                         setForm(prev => ({ ...prev, name: bank.name }));
                                                                                     }
@@ -498,7 +488,7 @@ export default function AccountsPage() {
                             {accounts.map((account) => {
                                 const isCash = account.type === "CASH" || account.isLiquid && !account.accountNumber;
 
-                                // DESERIALIZE STRICTLY: We extract the exact Bank ID we secretly saved
+                                // DESERIALIZE STRICTLY
                                 const [parsedBankId, parsedAlias] = account.name.includes("::")
                                     ? account.name.split("::")
                                     : [null, account.name];
@@ -513,7 +503,6 @@ export default function AccountsPage() {
                                         transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                         className="bg-white border border-slate-200/80 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 flex flex-col relative group overflow-hidden"
                                     >
-                                        {/* Sweeping Glare Animation on Hover */}
                                         <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-slate-100/60 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none transform -translate-x-full group-hover:translate-x-full ease-in-out z-20"></div>
 
                                         <div className="p-6 relative z-10">
@@ -521,18 +510,15 @@ export default function AccountsPage() {
                                                 <div className="flex items-center gap-4 min-w-0">
                                                     <BankLogo isCash={isCash} name={bankIdentity.name} domain={bankIdentity.domain} />
                                                     <div className="min-w-0">
-                                                        {/* Primary Bank Name (Strictly Resolved) */}
                                                         <h3 className="text-lg font-black text-slate-900 truncate tracking-tight">
                                                             {isCash ? "Physical Cash Wallet" : bankIdentity.name}
                                                         </h3>
-                                                        {/* Secondary Custom Alias (Strictly Resolved) */}
                                                         <p className={`text-[10px] font-bold uppercase tracking-wider mt-1 truncate ${isCash ? 'text-emerald-600' : 'text-slate-500'}`}>
                                                             {parsedAlias}
                                                         </p>
                                                     </div>
                                                 </div>
 
-                                                {/* Monochromatic Professional Dropdown */}
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger className="p-2 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-900 transition-all focus:outline-none">
                                                         <MoreVertical className="w-5 h-5 font-bold" />
@@ -569,19 +555,19 @@ export default function AccountsPage() {
                                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1.5">
                                                             <CreditCard className="w-3 h-3 font-bold" /> ACC
                                                         </span>
-                                                        <p className="text-xs font-black font-mono text-slate-700 truncate">{account.accountNumber || "—"}</p>
+                                                        <p className="text-sm font-black font-mono text-slate-900 truncate">{account.accountNumber || "—"}</p>
                                                     </div>
                                                     <div className="min-w-0">
                                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1.5">
                                                             <Landmark className="w-3 h-3 font-bold" /> IFSC
                                                         </span>
-                                                        <p className="text-xs font-black font-mono text-slate-700 truncate uppercase">{account.ifscCode || "—"}</p>
+                                                        <p className="text-sm font-black font-mono text-slate-900 truncate uppercase">{account.ifscCode || "—"}</p>
                                                     </div>
                                                     <div className="min-w-0">
                                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1.5">
                                                             <MapPin className="w-3 h-3 font-bold" /> BRANCH
                                                         </span>
-                                                        <p className="text-xs font-black text-slate-600 truncate">{account.branch || "—"}</p>
+                                                        <p className="text-sm font-black text-slate-900 truncate">{account.branch || "—"}</p>
                                                     </div>
                                                 </div>
                                             )}
