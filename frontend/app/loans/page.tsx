@@ -12,7 +12,7 @@ import {
     Scale, Calendar, CheckCircle2, MoreVertical, ShieldCheck,
     User, Building2, Percent, Wallet, Home, Briefcase, Coins,
     Pencil, Trash2, Clock, X, ChevronDown, Check, ShieldAlert,
-    CheckSquare, Banknote, ListCollapse, Receipt, Layers
+    CheckSquare, Banknote, ListCollapse, Receipt
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -86,82 +86,92 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label, placehol
     );
 };
 
-// --- DYNAMIC EVENT-SOURCED FINANCIAL ENGINE ---
+// --- STRICT BANKING MATHEMATICS ENGINE ---
 const calculateFinancials = (loan: any) => {
     const originalPrincipal = parseFloat(loan.principal) || 0;
     const rate = parseFloat(loan.monthlyRate) || 0;
     const isCompound = loan.interestType === 'COMPOUND';
 
     let currentPrincipal = originalPrincipal;
-    let totalAccruedInterest = 0;
+    let historicalAccruedInterest = 0;
     let totalPaidInterest = 0;
     let totalPaidPrincipal = 0;
 
-    // 1. Sort all transactions chronologically (oldest first)
-    const sortedTxs = [...(loan.transactions || [])].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    // Normalizes dates to prevent timezone drift from affecting day-counts
+    const stripTime = (dateInput: any) => {
+        const d = new Date(dateInput);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    };
 
-    let lastDate = new Date(loan.startDate).getTime();
+    // The Official Banking Standard: Fractional Months based on exact days / (365/12)
+    const calculateInterestForPeriod = (principal: number, startDate: number, endDate: number, accruedInterestSoFar: number) => {
+        if (endDate <= startDate) return 0;
+        const diffDays = Math.round((endDate - startDate) / (1000 * 60 * 60 * 24));
+        const monthsAccrued = diffDays / (365 / 12);
 
-    // 2. Walk through history, stepping from transaction to transaction
-    sortedTxs.forEach((tx: any) => {
-        const txDate = new Date(tx.date).getTime();
-
-        // Calculate interest accrued between the last event and this transaction
-        const diffDays = Math.max(0, (txDate - lastDate) / (1000 * 60 * 60 * 24));
-        const monthsAccrued = diffDays / 30; // Standard 30-day financial month
-
-        let interestForPeriod = 0;
         if (isCompound) {
-            // Compound Interest: Capitalizes unpaid interest
-            const principalForInterest = currentPrincipal + Math.max(0, totalAccruedInterest - totalPaidInterest);
-            interestForPeriod = principalForInterest * (Math.pow(1 + (rate / 100), monthsAccrued) - 1);
+            // Unpaid interest is capitalized into the principal base
+            const principalForInterest = principal + Math.max(0, accruedInterestSoFar - totalPaidInterest);
+            return principalForInterest * (Math.pow(1 + (rate / 100), monthsAccrued) - 1);
         } else {
-            // Simple Interest: Only calculates on remaining true principal
-            interestForPeriod = currentPrincipal * (rate / 100) * monthsAccrued;
+            // Strict simple interest
+            return principal * (rate / 100) * monthsAccrued;
         }
+    };
 
-        totalAccruedInterest += interestForPeriod;
+    // 1. Process historical transactions sequentially
+    const sortedTxs = [...(loan.transactions || [])].sort((a, b) => stripTime(a.date) - stripTime(b.date));
+    let lastDate = stripTime(loan.startDate);
 
-        // Apply the payment
+    sortedTxs.forEach((tx: any) => {
+        const txDate = stripTime(tx.date);
+        historicalAccruedInterest += calculateInterestForPeriod(currentPrincipal, lastDate, txDate, historicalAccruedInterest);
+
         if (tx.paymentType === 'PRINCIPAL') {
             currentPrincipal -= tx.amount;
             totalPaidPrincipal += tx.amount;
         } else if (tx.paymentType === 'INTEREST') {
             totalPaidInterest += tx.amount;
         }
-
-        // Move the timeline forward
         lastDate = txDate;
     });
 
-    // 3. Calculate final interest from the last transaction up to today (or the cleared date)
-    const endDate = loan.clearedDate ? new Date(loan.clearedDate).getTime() : new Date().getTime();
+    // 2. Calculate CURRENT real-time ledger status (up to Today)
+    const today = stripTime(new Date());
+    const clearedDate = loan.clearedDate ? stripTime(loan.clearedDate) : null;
+    const activeEndDate = clearedDate || today;
 
-    if (endDate > lastDate) {
-        const finalDiffDays = (endDate - lastDate) / (1000 * 60 * 60 * 24);
-        const finalMonthsAccrued = finalDiffDays / 30;
-
-        if (isCompound) {
-            const principalForInterest = currentPrincipal + Math.max(0, totalAccruedInterest - totalPaidInterest);
-            totalAccruedInterest += principalForInterest * (Math.pow(1 + (rate / 100), finalMonthsAccrued) - 1);
-        } else {
-            totalAccruedInterest += currentPrincipal * (rate / 100) * finalMonthsAccrued;
-        }
+    let currentAccruedInterest = historicalAccruedInterest;
+    if (activeEndDate > lastDate) {
+        currentAccruedInterest += calculateInterestForPeriod(currentPrincipal, lastDate, activeEndDate, historicalAccruedInterest);
     }
 
-    // 4. Compile the final ledger state
-    const outstandingInterest = Math.max(0, totalAccruedInterest - totalPaidInterest);
+    // 3. Calculate PROJECTED status (up to Maturity Date)
+    let projectedAccruedInterest = currentAccruedInterest;
+    const dueDate = loan.dueDate ? stripTime(loan.dueDate) : null;
+
+    if (!clearedDate && dueDate && dueDate > today) {
+        projectedAccruedInterest += calculateInterestForPeriod(currentPrincipal, today, dueDate, currentAccruedInterest);
+    }
+
+    const currentOutstandingInterest = Math.max(0, currentAccruedInterest - totalPaidInterest);
+    const projectedOutstandingInterest = Math.max(0, projectedAccruedInterest - totalPaidInterest);
 
     return {
         originalPrincipal,
         currentPrincipal: Math.max(0, currentPrincipal),
-        totalAccruedInterest,
+
+        // Current Snapshots
+        currentAccruedInterest,
+        currentOutstandingInterest,
+        totalCurrentOutstanding: Math.max(0, currentPrincipal) + currentOutstandingInterest,
+
+        // Projected Snapshots
+        projectedOutstandingInterest,
+        totalProjectedOutstanding: Math.max(0, currentPrincipal) + projectedOutstandingInterest,
+
         totalPaidInterest,
-        outstandingInterest,
         totalPaidPrincipal,
-        totalOutstanding: Math.max(0, currentPrincipal) + outstandingInterest
     };
 };
 
@@ -196,7 +206,6 @@ export default function LoansPage() {
         dueDate: ""
     });
 
-    // Payment Form State (Explicit Date)
     const [paymentPrincipal, setPaymentPrincipal] = useState("");
     const [paymentInterest, setPaymentInterest] = useState("");
     const [paymentAccountId, setPaymentAccountId] = useState("");
@@ -358,8 +367,8 @@ export default function LoansPage() {
     };
 
     const activeLoans = loans.filter(l => l.status === "ACTIVE");
-    const totalBorrowed = activeLoans.filter(l => l.direction === "BORROWED").reduce((sum, l) => sum + calculateFinancials(l).totalOutstanding, 0);
-    const totalLent = activeLoans.filter(l => l.direction === "LENT").reduce((sum, l) => sum + calculateFinancials(l).totalOutstanding, 0);
+    const totalBorrowed = activeLoans.filter(l => l.direction === "BORROWED").reduce((sum, l) => sum + calculateFinancials(l).totalCurrentOutstanding, 0);
+    const totalLent = activeLoans.filter(l => l.direction === "LENT").reduce((sum, l) => sum + calculateFinancials(l).totalCurrentOutstanding, 0);
     const netExposure = totalLent - totalBorrowed;
 
     const filteredLoans = loans.filter(l => (filterMode === "ALL" || l.direction === filterMode) && l.status === statusFilter);
@@ -391,7 +400,6 @@ export default function LoansPage() {
 
                 <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-10 relative">
 
-                    {/* Header */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 border-b border-slate-200/60 pb-8">
                         <div>
                             <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Credit Matrix</h1>
@@ -403,13 +411,12 @@ export default function LoansPage() {
                         </button>
                     </motion.div>
 
-                    {/* Premium KPI Strip */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
                         <div className="bg-white p-6 rounded-[1.5rem] shadow-sm border border-slate-200/60 flex items-center gap-5 hover:shadow-md transition-all group">
                             <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl shrink-0 group-hover:scale-105 transition-transform"><ArrowDownRight className="w-6 h-6 font-bold" /></div>
                             <div className="min-w-0">
                                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1 truncate">Active Liabilities</p>
-                                <h2 className="text-2xl font-bold text-rose-600 truncate font-mono">₹{totalBorrowed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
+                                <h2 className="text-2xl font-black text-rose-600 truncate font-mono">₹{totalBorrowed.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
                             </div>
                         </div>
 
@@ -417,7 +424,7 @@ export default function LoansPage() {
                             <div className="p-4 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-2xl shrink-0 group-hover:scale-105 transition-transform"><ArrowUpRight className="w-6 h-6 font-bold" /></div>
                             <div className="min-w-0">
                                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1 truncate">Active Receivables</p>
-                                <h2 className="text-2xl font-bold text-emerald-600 truncate font-mono">₹{totalLent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
+                                <h2 className="text-2xl font-black text-emerald-600 truncate font-mono">₹{totalLent.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</h2>
                             </div>
                         </div>
 
@@ -425,14 +432,13 @@ export default function LoansPage() {
                             <div className="p-4 bg-white/10 rounded-2xl shrink-0"><Wallet className="w-6 h-6 font-bold text-white" /></div>
                             <div className="min-w-0">
                                 <p className="text-[11px] font-bold text-blue-100 uppercase tracking-widest mb-1 truncate">Net Exposure</p>
-                                <h2 className="text-2xl font-bold truncate font-mono">
+                                <h2 className="text-2xl font-black truncate font-mono">
                                     {netExposure < 0 ? "-" : ""}₹{Math.abs(netExposure).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                                 </h2>
                             </div>
                         </div>
                     </motion.div>
 
-                    {/* Dual Action Filters */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row justify-between gap-4 mb-6">
                         <div className="flex p-1.5 bg-white border border-slate-200 rounded-2xl shadow-sm w-full md:w-auto">
                             <button onClick={() => setStatusFilter("ACTIVE")} className={`flex-1 px-8 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all ${statusFilter === "ACTIVE" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>Active</button>
@@ -447,7 +453,6 @@ export default function LoansPage() {
                         </div>
                     </motion.div>
 
-                    {/* Dynamic Card Grid */}
                     {fetching ? (
                         <div className="py-24 flex justify-center"><Loader2 className="w-10 h-10 animate-spin text-blue-600 font-bold" /></div>
                     ) : filteredLoans.length === 0 ? (
@@ -488,7 +493,6 @@ export default function LoansPage() {
                                                 </div>
                                             </div>
 
-                                            {/* Monochromatic Professional Menu */}
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger className="p-2.5 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-900 transition-all focus:outline-none">
                                                     <MoreVertical className="w-5 h-5 font-bold" />
@@ -506,7 +510,7 @@ export default function LoansPage() {
                                                                 <Banknote className="w-4 h-4 font-bold" /> Record Payment
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem onClick={() => handleEditClick(loan)} className="flex items-center gap-3 font-bold text-sm text-slate-700 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-50 focus:bg-slate-50">
-                                                                <Pencil className="w-4 h-4 font-bold" /> Edit Config
+                                                                <Pencil className="w-4 h-4 font-bold" /> Edit Details
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem onClick={() => setLoanToSettle(loan)} className="flex items-center gap-3 font-bold text-sm text-slate-700 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-50 focus:bg-slate-50">
                                                                 <CheckCircle2 className="w-4 h-4 font-bold" /> Mark Settled
@@ -523,13 +527,33 @@ export default function LoansPage() {
                                         </div>
 
                                         <div className="p-6 flex-1 relative z-10">
-                                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">{isCleared ? "Final Settled Value" : "Projected Obligation"}</span>
-                                            <span className={`text-4xl font-bold block tracking-tight font-mono truncate ${isCleared ? 'text-slate-700' : 'text-slate-900'}`}>
-                                                ₹{metrics.totalOutstanding.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                                                {isCleared ? "Final Settled Value" : "Current Outstanding (Today)"}
+                                            </span>
+                                            <span className={`text-4xl font-black block tracking-tight font-mono truncate ${isCleared ? 'text-slate-700' : 'text-slate-900'}`}>
+                                                ₹{metrics.totalCurrentOutstanding.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                                             </span>
 
-                                            {/* Deep Analytics Breakdown */}
-                                            <div className="mt-6 p-4 bg-slate-50 border border-slate-200/60 rounded-xl space-y-3">
+                                            {/* --- NEW: CLEAR TARGET DATE PROJECTION BOX --- */}
+                                            {!isCleared && loan.dueDate && new Date(loan.dueDate).getTime() > new Date().getTime() && (
+                                                <div className="mt-5 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-1.5">
+                                                            <Clock className="w-3.5 h-3.5" strokeWidth={3} /> At Target Payoff
+                                                        </span>
+                                                        <span className="text-sm font-black text-indigo-900 font-mono">
+                                                            ₹{metrics.totalProjectedOutstanding.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[10px] font-bold text-indigo-500 uppercase tracking-widest mt-1.5">
+                                                        <span>(₹{metrics.currentPrincipal.toLocaleString("en-IN", { maximumFractionDigits: 0 })} Prin + ₹{metrics.projectedOutstandingInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })} Int)</span>
+                                                        <span>{new Date(loan.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Current Snapshot Breakdown */}
+                                            <div className="mt-5 p-4 bg-slate-50 border border-slate-200/60 rounded-xl space-y-3">
                                                 <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
                                                     <div>
                                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-0.5">Principal Balance</span>
@@ -545,11 +569,11 @@ export default function LoansPage() {
 
                                                 <div className="flex justify-between items-center">
                                                     <div>
-                                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-0.5">Unpaid Interest</span>
-                                                        <span className="text-[9px] font-semibold text-slate-400">Total Accrued: ₹{metrics.totalAccruedInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-0.5">Accrued Interest</span>
+                                                        <span className="text-[9px] font-semibold text-slate-400">Up to Today</span>
                                                     </div>
                                                     <div className="text-right">
-                                                        <span className={`text-sm font-bold font-mono ${isCleared ? 'text-slate-500' : 'text-rose-500'}`}>+₹{metrics.outstandingInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                                        <span className={`text-sm font-bold font-mono ${isCleared ? 'text-slate-500' : 'text-rose-500'}`}>+₹{metrics.currentOutstandingInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
                                                         {metrics.totalPaidInterest > 0 && (
                                                             <span className="text-[9px] font-bold text-emerald-500 block">(-₹{metrics.totalPaidInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })} paid)</span>
                                                         )}
@@ -571,7 +595,7 @@ export default function LoansPage() {
 
                                         <div className="mt-auto flex divide-x divide-slate-100 border-t border-slate-100 relative z-10">
                                             <div className="flex-1 p-5 bg-slate-50/80 rounded-bl-[2rem]">
-                                                <div className="flex items-center gap-1.5 text-slate-400 mb-1.5">
+                                                <div className="flex items-center gap-1.5 text-slate-500 mb-1.5">
                                                     <Calendar className="w-3.5 h-3.5 font-bold" />
                                                     <span className="text-[10px] font-bold uppercase tracking-widest">Originated</span>
                                                 </div>
