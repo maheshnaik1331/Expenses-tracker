@@ -4,7 +4,6 @@ import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/navbar";
 import api from "@/lib/api";
-import { INDIAN_BANK_DIRECTORY } from "@/lib/bank-directory";
 import { toast } from "sonner";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { motion, AnimatePresence, Variants } from "framer-motion";
@@ -20,28 +19,21 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// --- SMART DIRECTORY RESOLVER ---
-// Scans the IFSC code or Account Name and pulls the exact matching configuration 
-// directly from your INDIAN_BANK_DIRECTORY so we never get wrong/default logos.
-const getDirectoryBank = (ifsc: string | null, alias: string) => {
-    // 1. Resolve via IFSC Prefix (Standard FinTech Logic)
-    if (ifsc && ifsc.length >= 4) {
-        const prefix = ifsc.substring(0, 4).toUpperCase();
-        const prefixMap: Record<string, string> = {
-            'SBIN': 'sbi', 'HDFC': 'hdfc', 'ICIC': 'icici', 'UTIB': 'axis',
-            'KKBK': 'kotak', 'PUNB': 'pnb', 'BARB': 'bob', 'BKID': 'boi',
-            'CNRB': 'canara', 'UBIN': 'union', 'IDIB': 'indian', 'IOBA': 'iob',
-            'YESB': 'yes', 'FDRL': 'federal', 'IDFB': 'idfc', 'INDX': 'indusind'
-        };
+// --- CENTRALIZED DIRECTORY IMPORT ---
+import { INDIAN_BANK_DIRECTORY } from "@/lib/bank-directory";
 
-        if (prefixMap[prefix]) {
-            const matched = INDIAN_BANK_DIRECTORY.find(b => b.id === prefixMap[prefix]);
-            if (matched) return matched;
-        }
+// --- THE STRICT DIRECTORY RESOLVER ---
+// This no longer guesses based on IFSC. It takes the exact Bank ID we secretly saved
+// to the database and forces the correct logo and branding to appear.
+const getDirectoryBank = (bankId: string | null, fallbackAlias: string) => {
+    // 1. Strict Match (Guarantees the logo appears at all costs)
+    if (bankId) {
+        const matched = INDIAN_BANK_DIRECTORY.find(b => b.id === bankId);
+        if (matched) return matched;
     }
 
-    // 2. Fallback: Search the user's alias against the directory names
-    const aliasLower = alias.toLowerCase();
+    // 2. Legacy Fallback (Just in case you have old accounts created before this update)
+    const aliasLower = fallbackAlias.toLowerCase();
     const matchedByName = INDIAN_BANK_DIRECTORY.find(b =>
         aliasLower.includes(b.name.toLowerCase()) ||
         aliasLower.includes(b.id.toLowerCase())
@@ -49,7 +41,6 @@ const getDirectoryBank = (ifsc: string | null, alias: string) => {
 
     if (matchedByName) return matchedByName;
 
-    // 3. Ultimate Fallback
     return { name: "Financial Institution", domain: "" };
 };
 
@@ -60,7 +51,7 @@ const BankLogo = ({ isCash, name, domain }: { isCash: boolean, name: string, dom
     if (isCash) {
         return (
             <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center flex-shrink-0 shadow-sm">
-                <Banknote className="w-6 h-6 text-emerald-600" />
+                <Banknote className="w-6 h-6 text-emerald-600 font-bold" strokeWidth={2.5} />
             </div>
         );
     }
@@ -68,7 +59,7 @@ const BankLogo = ({ isCash, name, domain }: { isCash: boolean, name: string, dom
     if (error || !domain) {
         return (
             <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center flex-shrink-0 shadow-sm">
-                <Building2 className="w-5 h-5 text-slate-400" />
+                <Building2 className="w-5 h-5 text-slate-400 font-bold" strokeWidth={2.5} />
             </div>
         );
     }
@@ -105,7 +96,9 @@ export default function AccountsPage() {
 
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [bankSearch, setBankSearch] = useState("");
-    const [selectedBankId, setSelectedBankId] = useState("sbi");
+
+    // Safely default to the first bank in the directory
+    const [selectedBankId, setSelectedBankId] = useState(INDIAN_BANK_DIRECTORY[0]?.id || "sbi");
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const fetchAccounts = async () => {
@@ -143,14 +136,26 @@ export default function AccountsPage() {
     const openNewForm = (mode: "BANK" | "CASH") => {
         resetForm();
         setDialogMode(mode);
+        if (mode === "BANK" && INDIAN_BANK_DIRECTORY.length > 0) {
+            setSelectedBankId(INDIAN_BANK_DIRECTORY[0].id);
+            setForm(prev => ({ ...prev, name: INDIAN_BANK_DIRECTORY[0].name }));
+        }
     };
 
     const handleEditClick = (account: any) => {
         setEditingAccountId(account.id);
         const mode = account.type === "CASH" || account.isLiquid && !account.accountNumber ? "CASH" : "BANK";
         setDialogMode(mode);
+
+        // Deserialize the strictly saved Bank ID and Alias
+        const [parsedBankId, parsedAlias] = account.name.includes("::")
+            ? account.name.split("::")
+            : [INDIAN_BANK_DIRECTORY[0].id, account.name];
+
+        if (mode === "BANK") setSelectedBankId(parsedBankId);
+
         setForm({
-            name: account.name,
+            name: parsedAlias,
             accountNumber: account.accountNumber || "",
             ifscCode: account.ifscCode || "",
             branch: account.branch || "",
@@ -166,8 +171,12 @@ export default function AccountsPage() {
             setSubmitting(true);
             const isCash = dialogMode === "CASH";
 
+            // STRICT SERIALIZATION: We merge the Exact Bank ID with the User's Alias
+            // This guarantees the logo will always load, regardless of what they typed.
+            const serializedName = isCash ? form.name : `${selectedBankId}::${form.name}`;
+
             const payload = {
-                name: form.name,
+                name: serializedName,
                 type: isCash ? "CASH" : "BANK",
                 accountNumber: isCash ? null : form.accountNumber || null,
                 ifscCode: isCash ? null : form.ifscCode?.toUpperCase() || null,
@@ -176,7 +185,7 @@ export default function AccountsPage() {
             };
 
             if (editingAccountId) {
-                await api.put(`/accounts/${editingAccountId}`, payload);
+                await api.patch(`/accounts/${editingAccountId}`, payload);
                 toast.success("Ledger configuration updated.");
             } else {
                 await api.post("/accounts", payload);
@@ -195,18 +204,18 @@ export default function AccountsPage() {
         if (!accountToDelete) return;
         try {
             setSubmitting(true);
-            toast.loading("Purging ledger...", { id: "del" });
             await api.delete(`/accounts/${accountToDelete}`);
-            toast.success("Ledger destroyed safely.", { id: "del" });
+            toast.success("Ledger destroyed safely.");
             fetchAccounts();
         } catch (err) {
-            toast.error("Failed to erase account.", { id: "del" });
+            toast.error("Failed to erase account.");
         } finally {
             setSubmitting(false);
             setAccountToDelete(null);
         }
     };
 
+    // Filter using the central directory
     const filteredBanks = INDIAN_BANK_DIRECTORY.filter(b => b.name.toLowerCase().includes(bankSearch.toLowerCase()));
     const selectedBankData = INDIAN_BANK_DIRECTORY.find(b => b.id === selectedBankId);
 
@@ -222,34 +231,34 @@ export default function AccountsPage() {
         exit: { opacity: 0, scale: 0.95, y: 20, transition: { duration: 0.2 } }
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>;
+    if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]"><Loader2 className="h-8 w-8 animate-spin text-blue-600 font-bold" strokeWidth={3} /></div>;
 
     return (
         <ProtectedRoute>
-            <div className="min-h-screen bg-[#F8F9FA] text-slate-900 flex flex-col font-sans font-medium antialiased selection:bg-blue-100">
+            <div className="min-h-screen bg-[#F8F9FA] text-slate-900 flex flex-col font-sans antialiased selection:bg-blue-100">
                 <Navbar />
 
                 <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-10 relative">
 
                     {/* Top UX Header */}
-                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 border-b border-slate-200/60 pb-8">
                         <div>
-                            <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Financial Assets</h1>
-                            <p className="text-slate-500 text-sm mt-2 font-semibold">Manage institutional bank accounts and physical cash reserves.</p>
+                            <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Financial Assets</h1>
+                            <p className="text-slate-500 text-sm mt-2 font-bold">Manage institutional bank accounts and physical cash reserves.</p>
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
                             <button
                                 onClick={() => openNewForm("CASH")}
-                                className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 font-bold text-sm px-6 py-3.5 rounded-xl shadow-sm hover:bg-slate-50 transition-all active:scale-95"
+                                className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-900 font-bold text-sm px-6 py-3.5 rounded-xl shadow-sm hover:bg-slate-50 transition-all active:scale-95"
                             >
-                                <Wallet className="w-4 h-4 text-emerald-600" /> Add Cash Wallet
+                                <Wallet className="w-4 h-4 text-emerald-600 font-bold" strokeWidth={2.5} /> Add Cash Wallet
                             </button>
                             <button
                                 onClick={() => openNewForm("BANK")}
                                 className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white font-bold text-sm px-6 py-3.5 rounded-xl shadow-md shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95"
                             >
-                                <Landmark className="w-4 h-4" /> Link Institution
+                                <Landmark className="w-4 h-4 font-bold" strokeWidth={2.5} /> Link Institution
                             </button>
                         </div>
                     </motion.div>
@@ -261,30 +270,29 @@ export default function AccountsPage() {
                                 <motion.div
                                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                     className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm"
-                                    onClick={() => setAccountToDelete(null)}
+                                    onClick={() => !submitting && setAccountToDelete(null)}
                                 />
                                 <motion.div
                                     variants={modalVariants} initial="hidden" animate="visible" exit="exit"
                                     className="relative bg-white border border-slate-200 rounded-[2rem] p-8 max-w-md w-full shadow-2xl overflow-hidden"
                                 >
-                                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-rose-500 to-transparent opacity-50"></div>
                                     <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-6 border border-rose-100">
-                                        <ShieldAlert className="w-6 h-6 text-rose-600" />
+                                        <ShieldAlert className="w-6 h-6 text-rose-600 font-bold" strokeWidth={2.5} />
                                     </div>
-                                    <h3 className="text-xl font-bold text-slate-900 mb-2 tracking-tight">Decouple Ledger?</h3>
-                                    <p className="text-sm text-slate-500 mb-8 leading-relaxed font-semibold">
+                                    <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Decouple Ledger?</h3>
+                                    <p className="text-sm text-slate-500 mb-8 leading-relaxed font-bold">
                                         This action is irreversible. It will sever the connection to this asset and permanently drop all associated transaction history from your global ledger.
                                     </p>
                                     <div className="flex gap-3">
                                         <button
                                             onClick={() => setAccountToDelete(null)}
-                                            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold py-3 rounded-xl transition-colors"
+                                            className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-black py-3 rounded-xl transition-colors"
                                         >
                                             Abort
                                         </button>
                                         <button
                                             onClick={confirmDeletion} disabled={submitting}
-                                            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold py-3 rounded-xl transition-colors shadow-md flex justify-center items-center"
+                                            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-black py-3 rounded-xl transition-colors shadow-md flex justify-center items-center"
                                         >
                                             {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
                                         </button>
@@ -312,10 +320,10 @@ export default function AccountsPage() {
                                     <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 shrink-0 bg-slate-50/80">
                                         <div className="flex items-center gap-4">
                                             <div className={`p-3 rounded-2xl border shadow-sm ${dialogMode === "CASH" ? 'bg-emerald-50 border-emerald-200' : 'bg-blue-50 border-blue-200'}`}>
-                                                {dialogMode === "CASH" ? <Banknote className="w-6 h-6 text-emerald-600" /> : <Landmark className="w-6 h-6 text-blue-600" />}
+                                                {dialogMode === "CASH" ? <Banknote className="w-6 h-6 text-emerald-600 font-bold" /> : <Landmark className="w-6 h-6 text-blue-600 font-bold" />}
                                             </div>
                                             <div>
-                                                <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                                                <h2 className="text-xl font-black text-slate-900 tracking-tight">
                                                     {editingAccountId ? "Update Configuration" : (dialogMode === "CASH" ? "Initialize Cash Reserve" : "Link Institution")}
                                                 </h2>
                                                 <p className="text-[11px] font-bold text-slate-500 mt-1 uppercase tracking-wider">
@@ -323,7 +331,7 @@ export default function AccountsPage() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <button onClick={resetForm} className="p-2 text-slate-400 hover:text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-full transition-colors shadow-sm font-bold">
+                                        <button onClick={resetForm} className="p-2 text-slate-400 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-full transition-colors shadow-sm font-bold">
                                             <X className="w-5 h-5 font-bold" />
                                         </button>
                                     </div>
@@ -336,7 +344,7 @@ export default function AccountsPage() {
                                                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Select Institution Template</label>
                                                     <div
                                                         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                                                        className="w-full bg-white border border-slate-300 hover:border-slate-400 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 cursor-pointer flex justify-between items-center transition-all shadow-sm"
+                                                        className="w-full bg-white border border-slate-300 hover:border-blue-500 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 cursor-pointer flex justify-between items-center transition-all shadow-sm"
                                                     >
                                                         <span className="truncate flex items-center gap-3">
                                                             {selectedBankData ? (
@@ -357,11 +365,11 @@ export default function AccountsPage() {
                                                             >
                                                                 <div className="p-3 border-b border-slate-100 bg-slate-50">
                                                                     <div className="relative">
-                                                                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                                                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold" />
                                                                         <input
                                                                             type="text" autoFocus placeholder="Search institutions..."
                                                                             value={bankSearch} onChange={(e) => setBankSearch(e.target.value)}
-                                                                            className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2 text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-sm"
+                                                                            className="w-full bg-white border border-slate-300 rounded-lg pl-10 pr-4 py-2 text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all shadow-sm"
                                                                         />
                                                                     </div>
                                                                 </div>
@@ -374,7 +382,10 @@ export default function AccountsPage() {
                                                                                 key={bank.id}
                                                                                 onClick={() => {
                                                                                     setSelectedBankId(bank.id);
-                                                                                    if (!form.name) setForm(prev => ({ ...prev, name: bank.name }));
+                                                                                    // Auto-fill the alias with the bank name if empty
+                                                                                    if (!form.name || form.name === (INDIAN_BANK_DIRECTORY.find(b => b.id === selectedBankId)?.name || "")) {
+                                                                                        setForm(prev => ({ ...prev, name: bank.name }));
+                                                                                    }
                                                                                     setIsDropdownOpen(false);
                                                                                     setBankSearch("");
                                                                                 }}
@@ -382,7 +393,7 @@ export default function AccountsPage() {
                                                                             >
                                                                                 <div className="flex items-center gap-3">
                                                                                     <div className="w-6 h-6 bg-white border border-slate-200 rounded-sm p-0.5"><img src={`https://img.logo.dev/${bank.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-full h-full object-contain font-medium" /></div>
-                                                                                    <span className={`text-sm ${selectedBankId === bank.id ? 'font-bold text-slate-900' : 'font-semibold text-slate-600'}`}>{bank.name}</span>
+                                                                                    <span className={`text-sm ${selectedBankId === bank.id ? 'font-black text-slate-900' : 'font-bold text-slate-600'}`}>{bank.name}</span>
                                                                                 </div>
                                                                                 {selectedBankId === bank.id && <Check className="w-4 h-4 text-blue-600 font-bold" />}
                                                                             </div>
@@ -411,7 +422,7 @@ export default function AccountsPage() {
                                                     <input
                                                         type="number" step="0.01" required placeholder="0.00"
                                                         value={form.currentBalance} onChange={(e) => setForm({ ...form, currentBalance: e.target.value })}
-                                                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-base font-bold font-mono text-slate-900 placeholder:text-slate-400 placeholder:font-semibold focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
+                                                        className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-base font-black font-mono text-slate-900 placeholder:text-slate-400 placeholder:font-semibold focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
                                                     />
                                                 </div>
                                             </div>
@@ -435,9 +446,6 @@ export default function AccountsPage() {
                                                                 value={form.ifscCode} onChange={(e) => setForm({ ...form, ifscCode: e.target.value.toUpperCase() })}
                                                                 className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-sm font-bold font-mono text-slate-900 placeholder:text-slate-400 placeholder:font-semibold uppercase focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
                                                             />
-                                                            <p className="text-[10px] text-slate-400 mt-2 leading-tight font-semibold">
-                                                                Prefix dictates auto-branding.
-                                                            </p>
                                                         </div>
                                                         <div>
                                                             <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Branch Name</label>
@@ -455,11 +463,11 @@ export default function AccountsPage() {
 
                                     {/* Modal Footer */}
                                     <div className="p-6 border-t border-slate-100 bg-slate-50/80 shrink-0 flex justify-end gap-3">
-                                        <button onClick={resetForm} className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-sm">
+                                        <button onClick={resetForm} className="bg-white hover:bg-slate-100 border border-slate-200 text-slate-900 text-sm font-black px-6 py-3 rounded-xl transition-all shadow-sm">
                                             Cancel
                                         </button>
-                                        <button form="accountForm" type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-8 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 shadow-md shadow-blue-600/20">
-                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : <Check className="w-4 h-4 font-bold" />}
+                                        <button form="accountForm" type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-black px-8 py-3 rounded-xl flex items-center gap-2 transition-all disabled:opacity-50 shadow-md shadow-blue-600/20">
+                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : <Check className="w-4 h-4 font-bold" strokeWidth={3} />}
                                             {editingAccountId ? "Save Changes" : "Provision Ledger"}
                                         </button>
                                     </div>
@@ -470,14 +478,14 @@ export default function AccountsPage() {
 
                     {/* Premium Ledger Cards Grid */}
                     {fetching ? (
-                        <div className="py-32 flex flex-col items-center justify-center"><Loader2 className="w-10 h-10 animate-spin text-blue-600 mb-4" /><p className="text-sm font-bold text-slate-500">Decrypting assets...</p></div>
+                        <div className="py-32 flex flex-col items-center justify-center"><Loader2 className="w-10 h-10 animate-spin text-blue-600 mb-4" strokeWidth={3} /><p className="text-sm font-bold text-slate-500">Decrypting assets...</p></div>
                     ) : accounts.length === 0 ? (
-                        <motion.div initial="hidden" animate="show" variants={fadeUp} className="border border-slate-200 bg-white rounded-[2rem] p-16 text-center max-w-xl mx-auto shadow-sm relative overflow-hidden">
+                        <motion.div initial="hidden" animate="show" variants={fadeUp} className="border border-slate-200 bg-white rounded-[2rem] p-16 text-center max-w-xl mx-auto shadow-sm relative overflow-hidden mt-8">
                             <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 mx-auto mb-6 border border-slate-100 relative z-10">
-                                <Landmark className="w-8 h-8" />
+                                <Landmark className="w-8 h-8 font-bold" />
                             </div>
-                            <h3 className="text-xl font-bold text-slate-900 relative z-10 tracking-tight">No Assets Configured</h3>
-                            <p className="text-slate-500 text-sm mt-3 max-w-sm mx-auto leading-relaxed font-semibold relative z-10">
+                            <h3 className="text-xl font-black text-slate-900 relative z-10 tracking-tight">No Assets Configured</h3>
+                            <p className="text-slate-500 text-sm mt-3 max-w-sm mx-auto leading-relaxed font-bold relative z-10">
                                 Link your institutional bank accounts or provision a physical cash wallet to initialize your matrix.
                             </p>
                         </motion.div>
@@ -489,7 +497,13 @@ export default function AccountsPage() {
                         >
                             {accounts.map((account) => {
                                 const isCash = account.type === "CASH" || account.isLiquid && !account.accountNumber;
-                                const bankIdentity = getDirectoryBank(account.ifscCode, account.name);
+
+                                // DESERIALIZE STRICTLY: We extract the exact Bank ID we secretly saved
+                                const [parsedBankId, parsedAlias] = account.name.includes("::")
+                                    ? account.name.split("::")
+                                    : [null, account.name];
+
+                                const bankIdentity = getDirectoryBank(parsedBankId, parsedAlias);
 
                                 return (
                                     <motion.div
@@ -500,26 +514,27 @@ export default function AccountsPage() {
                                         className="bg-white border border-slate-200/80 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 flex flex-col relative group overflow-hidden"
                                     >
                                         {/* Sweeping Glare Animation on Hover */}
-                                        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/60 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none transform -translate-x-full group-hover:translate-x-full ease-in-out z-20"></div>
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-slate-100/60 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none transform -translate-x-full group-hover:translate-x-full ease-in-out z-20"></div>
 
                                         <div className="p-6 relative z-10">
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex items-center gap-4 min-w-0">
                                                     <BankLogo isCash={isCash} name={bankIdentity.name} domain={bankIdentity.domain} />
                                                     <div className="min-w-0">
-                                                        {/* Primary Bank Name */}
-                                                        <h3 className="text-base font-bold text-slate-900 truncate tracking-tight">
+                                                        {/* Primary Bank Name (Strictly Resolved) */}
+                                                        <h3 className="text-lg font-black text-slate-900 truncate tracking-tight">
                                                             {isCash ? "Physical Cash Wallet" : bankIdentity.name}
                                                         </h3>
-                                                        {/* Secondary Custom Alias */}
-                                                        <p className={`text-[10px] font-bold uppercase tracking-wider mt-1.5 truncate ${isCash ? 'text-emerald-600' : 'text-slate-500'}`}>
-                                                            {account.name}
+                                                        {/* Secondary Custom Alias (Strictly Resolved) */}
+                                                        <p className={`text-[10px] font-bold uppercase tracking-wider mt-1 truncate ${isCash ? 'text-emerald-600' : 'text-slate-500'}`}>
+                                                            {parsedAlias}
                                                         </p>
                                                     </div>
                                                 </div>
 
+                                                {/* Monochromatic Professional Dropdown */}
                                                 <DropdownMenu>
-                                                    <DropdownMenuTrigger className="p-2 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-700 transition-all focus:outline-none">
+                                                    <DropdownMenuTrigger className="p-2 rounded-xl hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-900 transition-all focus:outline-none">
                                                         <MoreVertical className="w-5 h-5 font-bold" />
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end" className="bg-white border border-slate-200 w-48 p-2 rounded-2xl shadow-xl mt-2">
@@ -535,8 +550,8 @@ export default function AccountsPage() {
                                             </div>
 
                                             <div className="mt-8 mb-2">
-                                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Available Capital</span>
-                                                <span className="text-3xl font-bold text-slate-900 block tracking-tight font-mono">
+                                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Available Capital</span>
+                                                <span className="text-4xl font-black text-slate-900 block tracking-tight font-mono">
                                                     ₹{account.currentBalance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                                                 </span>
                                             </div>
@@ -546,7 +561,7 @@ export default function AccountsPage() {
                                             {isCash ? (
                                                 <div className="flex items-center gap-2 text-emerald-600">
                                                     <Banknote className="w-4 h-4 font-bold" />
-                                                    <span className="text-xs font-bold uppercase tracking-wider">Untraceable Physical Cash</span>
+                                                    <span className="text-[11px] font-black uppercase tracking-wider">Untraceable Physical Cash</span>
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-3 gap-3">
@@ -554,19 +569,19 @@ export default function AccountsPage() {
                                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1.5">
                                                             <CreditCard className="w-3 h-3 font-bold" /> ACC
                                                         </span>
-                                                        <p className="text-xs font-bold font-mono text-slate-700 truncate">{account.accountNumber || "—"}</p>
+                                                        <p className="text-xs font-black font-mono text-slate-700 truncate">{account.accountNumber || "—"}</p>
                                                     </div>
                                                     <div className="min-w-0">
                                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1.5">
                                                             <Landmark className="w-3 h-3 font-bold" /> IFSC
                                                         </span>
-                                                        <p className="text-xs font-bold font-mono text-slate-700 truncate uppercase">{account.ifscCode || "—"}</p>
+                                                        <p className="text-xs font-black font-mono text-slate-700 truncate uppercase">{account.ifscCode || "—"}</p>
                                                     </div>
                                                     <div className="min-w-0">
                                                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1.5">
                                                             <MapPin className="w-3 h-3 font-bold" /> BRANCH
                                                         </span>
-                                                        <p className="text-xs font-bold text-slate-600 truncate">{account.branch || "—"}</p>
+                                                        <p className="text-xs font-black text-slate-600 truncate">{account.branch || "—"}</p>
                                                     </div>
                                                 </div>
                                             )}

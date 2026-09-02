@@ -8,7 +8,7 @@ export interface BankItem {
 
 export const INDIAN_BANK_DIRECTORY: BankItem[] = [
     // === PUBLIC SECTOR BANKS ===
-    { id: "sbi", name: "State Bank of India", domain: "sbi.co.in", category: "PUBLIC" },
+    { id: "sbi", name: "State Bank of India", domain: "sbi.bank.in", category: "PUBLIC" },
     { id: "bob", name: "Bank of Baroda", domain: "bankofbaroda.in", category: "PUBLIC" },
     { id: "boi", name: "Bank of India", domain: "bankofindia.co.in", category: "PUBLIC" },
     { id: "bom", name: "Bank of Maharashtra", domain: "bankofmaharashtra.in", category: "PUBLIC" },
@@ -34,7 +34,7 @@ export const INDIAN_BANK_DIRECTORY: BankItem[] = [
     { id: "indusind", name: "IndusInd Bank Limited", domain: "indusind.com", category: "PRIVATE" },
     { id: "idfc-first", name: "IDFC FIRST Bank Limited", domain: "idfcfirstbank.com", category: "PRIVATE" },
     { id: "jk-bank", name: "Jammu & Kashmir Bank Limited", domain: "jkbank.com", category: "PRIVATE" },
-    { id: "karnataka-bank", name: "Karnataka Bank Limited", domain: "karnatakabank.com", category: "PRIVATE" },
+    { id: "karnataka-bank", name: "Karnataka Bank Limited", domain: "karnatakabank.bank.in", category: "PRIVATE" },
     { id: "kvb", name: "Karur Vysya Bank Limited", domain: "kvb.co.in", category: "PRIVATE" },
     { id: "kotak", name: "Kotak Mahindra Bank Limited", domain: "kotak.com", category: "PRIVATE" },
     { id: "nainital", name: "Nainital Bank Limited", domain: "nainitalbank.co.in", category: "PRIVATE" },
