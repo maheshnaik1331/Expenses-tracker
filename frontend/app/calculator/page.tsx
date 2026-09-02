@@ -193,6 +193,22 @@ export default function CalculatorsPage() {
         { id: "EMI", label: "Loan EMI", icon: Landmark },
     ];
 
+    // --- INDIAN NUMBER FORMATTER LOGIC ---
+    const handlePrincipalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        // Strip out the commas so we get a raw string of numbers
+        const rawValue = e.target.value.replace(/,/g, "");
+
+        if (rawValue === "") {
+            setPrincipal(0);
+            return;
+        }
+
+        const numericValue = Number(rawValue);
+        if (!isNaN(numericValue)) {
+            setPrincipal(numericValue);
+        }
+    };
+
     return (
         <ProtectedRoute>
             <div className="min-h-screen bg-[#F8F9FA] flex flex-col font-sans antialiased selection:bg-blue-100 relative">
@@ -263,8 +279,11 @@ export default function CalculatorsPage() {
                                         <div className={`flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl focus-within:ring-2 focus-within:ring-${themeColor}-500/20 focus-within:border-${themeColor}-400 transition-all`}>
                                             <IndianRupee className={`w-4 h-4 text-slate-400 font-bold`} strokeWidth={2.5} />
                                             <input
-                                                type="number" min={0} value={principal} onChange={(e) => setPrincipal(Number(e.target.value))}
-                                                className={`w-28 bg-transparent text-right text-lg font-black font-mono text-slate-900 outline-none`}
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={principal === 0 ? "" : principal.toLocaleString("en-IN")}
+                                                onChange={handlePrincipalChange}
+                                                className={`w-36 bg-transparent text-right text-lg font-black font-mono text-slate-900 outline-none`}
                                             />
                                         </div>
                                     </div>
