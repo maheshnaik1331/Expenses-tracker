@@ -31,7 +31,6 @@ export class AccountsService {
     });
   }
 
-  // Get aggregated balances (Liquid Cash vs Net Position)
   async getAccountSummary(userId: string) {
     const accounts = await this.prisma.account.findMany({
       where: { userId, status: 'ACTIVE' },
@@ -66,6 +65,11 @@ export class AccountsService {
 
     if (!account) throw new NotFoundException('Account not found');
 
+    // Safely determine isLiquid status without breaking partial updates
+    const isLiquid = data.type
+      ? (data.type === AccountType.CASH || data.type === AccountType.BANK)
+      : account.isLiquid;
+
     return this.prisma.account.update({
       where: { id: accountId },
       data: {
@@ -75,7 +79,7 @@ export class AccountsService {
         accountNumber: data.accountNumber,
         ifscCode: data.ifscCode,
         branch: data.branch,
-        isLiquid: data.type === AccountType.CASH || data.type === AccountType.BANK,
+        isLiquid,
       },
     });
   }

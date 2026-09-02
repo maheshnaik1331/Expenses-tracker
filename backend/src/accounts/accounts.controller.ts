@@ -1,10 +1,10 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
 import { AccountsService } from './accounts.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 
 @Controller('accounts')
-@UseGuards(FirebaseAuthGuard) // Secures all routes in this controller
+@UseGuards(FirebaseAuthGuard)
 export class AccountsController {
   constructor(private readonly accountsService: AccountsService) { }
 
@@ -18,26 +18,21 @@ export class AccountsController {
     return this.accountsService.findAll(req.user.id);
   }
 
+  @Get('summary')
+  getSummary(@Req() req) {
+    return this.accountsService.getAccountSummary(req.user.id);
+  }
+
   @Get(':id')
   findOne(@Req() req, @Param('id') id: string) {
     return this.accountsService.findOne(req.user.id, id);
   }
 
-  // ==========================================
-  // THE MISSING EDIT ENDPOINT
-  // ==========================================
-  @Put(':id')
-  update(
-    @Req() req,
-    @Param('id') id: string,
-    @Body() updateAccountDto: Partial<CreateAccountDto>
-  ) {
+  @Patch(':id')
+  update(@Req() req, @Param('id') id: string, @Body() updateAccountDto: Partial<CreateAccountDto>) {
     return this.accountsService.update(req.user.id, id, updateAccountDto);
   }
 
-  // ==========================================
-  // THE DELETE ENDPOINT (For Purging Ledgers)
-  // ==========================================
   @Delete(':id')
   remove(@Req() req, @Param('id') id: string) {
     return this.accountsService.remove(req.user.id, id);
