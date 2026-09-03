@@ -18,10 +18,12 @@ import {
   PieChart, Pie, Cell, Legend
 } from "recharts";
 
-// --- EXPRESSIVE FINTECH COLOR PALETTES ---
-const ASSET_COLORS = ['#6366f1', '#8b5cf6', '#d946ef', '#0ea5e9', '#14b8a6', '#f59e0b', '#ec4899'];
-const EXPENSE_COLORS = ['#f43f5e', '#f97316', '#fbbf24', '#facc15', '#ef4444', '#f87171', '#fb923c'];
-const INCOME_COLORS = ['#10b981', '#059669', '#0ea5e9', '#06b6d4', '#3b82f6', '#34d399', '#2dd4bf'];
+// --- HIGH-CONTRAST DISTINCT COLOR PALETTES ---
+// Using distinctly different colors (Red, Blue, Green, Yellow, Orange, Maroon, Purple, Teal, Pink)
+// Shuffled slightly for each chart so the primary categories have distinct identities.
+const ASSET_COLORS = ['#3b82f6', '#f97316', '#10b981', '#ef4444', '#8b5cf6', '#eab308', '#06b6d4', '#831843', '#ec4899'];
+const EXPENSE_COLORS = ['#ef4444', '#3b82f6', '#eab308', '#10b981', '#8b5cf6', '#f97316', '#06b6d4', '#ec4899', '#831843'];
+const INCOME_COLORS = ['#10b981', '#8b5cf6', '#f97316', '#3b82f6', '#ec4899', '#eab308', '#ef4444', '#06b6d4', '#831843'];
 
 // --- UTILITIES ---
 const formatINR = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
@@ -309,7 +311,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
 
                 {/* Cashflow Area Chart */}
-                <motion.div variants={itemVariants} className="lg:col-span-2 bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-sm">
+                <motion.div variants={itemVariants} className="lg:col-span-2 bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-md shadow-slate-200/50">
                   <div className="flex justify-between items-center mb-8">
                     <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 tracking-tight">
                       <Activity className="w-5 h-5 text-blue-600 font-bold" /> Cash Velocity
@@ -352,7 +354,7 @@ export default function DashboardPage() {
                 </motion.div>
 
                 {/* Asset Distribution Rounded Donut */}
-                <motion.div variants={itemVariants} className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-sm flex flex-col">
+                <motion.div variants={itemVariants} className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-md shadow-slate-200/50 flex flex-col">
                   <h3 className="text-lg font-black text-slate-900 mb-8 flex items-center gap-2 tracking-tight">
                     <Wallet className="w-5 h-5 text-indigo-600 font-bold" /> Capital Allocation
                   </h3>
@@ -385,7 +387,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
 
                 {/* Expenses By Category Rounded Donut */}
-                <motion.div variants={itemVariants} className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center gap-8">
+                <motion.div variants={itemVariants} className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-md shadow-slate-200/50 flex flex-col sm:flex-row items-center gap-8">
                   <div className="w-full sm:w-1/2">
                     <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2 tracking-tight">
                       <PieChartIcon className="w-5 h-5 text-rose-500 font-bold" /> Outflows
@@ -411,7 +413,7 @@ export default function DashboardPage() {
                 </motion.div>
 
                 {/* Income By Category Rounded Donut */}
-                <motion.div variants={itemVariants} className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center gap-8">
+                <motion.div variants={itemVariants} className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-md shadow-slate-200/50 flex flex-col sm:flex-row items-center gap-8">
                   <div className="w-full sm:w-1/2">
                     <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2 tracking-tight">
                       <PieChartIcon className="w-5 h-5 text-emerald-500 font-bold" /> Inflows
@@ -441,7 +443,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
 
                 {/* Live Ledger Feed */}
-                <motion.div variants={itemVariants} className="bg-white rounded-[2rem] border border-slate-200/80 shadow-sm overflow-hidden flex flex-col h-[500px]">
+                <motion.div variants={itemVariants} className="bg-white rounded-[2rem] border border-slate-200/80 shadow-md shadow-slate-200/50 overflow-hidden flex flex-col h-[500px]">
                   <div className="p-6 sm:px-8 sm:py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/80 shrink-0">
                     <div>
                       <h3 className="text-lg font-black text-slate-900 tracking-tight">Live Ledger</h3>
@@ -487,7 +489,7 @@ export default function DashboardPage() {
                 </motion.div>
 
                 {/* Individual Bank Balances */}
-                <motion.div variants={itemVariants} className="bg-white rounded-[2rem] border border-slate-200/80 shadow-sm overflow-hidden flex flex-col h-[500px]">
+                <motion.div variants={itemVariants} className="bg-white rounded-[2rem] border border-slate-200/80 shadow-md shadow-slate-200/50 overflow-hidden flex flex-col h-[500px]">
                   <div className="p-6 sm:px-8 sm:py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/80 shrink-0">
                     <div>
                       <h3 className="text-lg font-black text-slate-900 tracking-tight">Active Systems</h3>
