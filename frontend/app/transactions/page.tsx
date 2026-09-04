@@ -11,9 +11,8 @@ import { motion, AnimatePresence, Variants } from "framer-motion";
 import {
     Loader2, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft,
     Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase,
-    Pencil, Trash2, Calendar, ShieldAlert, X, Repeat, ChevronDown, Check, Landmark,
-    TrendingUp,
-    Banknote
+    Pencil, Trash2, Calendar, ShieldAlert, X, Repeat, ChevronDown, Check, Landmark, Banknote,
+    TrendingUp
 } from "lucide-react";
 
 // --- UTILITIES ---
@@ -23,19 +22,19 @@ const INCOME_CATEGORIES = ["Salary", "Freelance", "Investments", "Refund", "Othe
 const EXPENSE_CATEGORIES = ["Housing", "Food & Dining", "Transportation", "Utilities", "Subscriptions", "Debt Repayment", "Shopping", "Other"];
 const TRANSFER_CATEGORIES = ["Self Transfer", "Investment Deposit", "Credit Card Payment"];
 
-const getCategoryIcon = (category: string, type: string) => {
-    if (type === "TRANSFER") return <Repeat className="w-5 h-5 font-bold" />;
-    if (type === "INCOME") return <Briefcase className="w-5 h-5 font-bold" />;
+const getCategoryIcon = (category: string, type: string, sizeClass = "w-5 h-5") => {
+    if (type === "TRANSFER") return <Repeat className={`${sizeClass} font-bold`} />;
+    if (type === "INCOME") return <Briefcase className={`${sizeClass} font-bold`} />;
     switch (category) {
-        case "Food & Dining": return <Coffee className="w-5 h-5 font-bold" />;
-        case "Housing": return <Home className="w-5 h-5 font-bold" />;
-        case "Transportation": return <Car className="w-5 h-5 font-bold" />;
-        case "Subscriptions": return <Receipt className="w-5 h-5 font-bold" />;
-        default: return <Wallet className="w-5 h-5 font-bold" />;
+        case "Food & Dining": return <Coffee className={`${sizeClass} font-bold`} />;
+        case "Housing": return <Home className={`${sizeClass} font-bold`} />;
+        case "Transportation": return <Car className={`${sizeClass} font-bold`} />;
+        case "Subscriptions": return <Receipt className={`${sizeClass} font-bold`} />;
+        default: return <Wallet className={`${sizeClass} font-bold`} />;
     }
 };
 
-// --- CUSTOM INTERACTIVE DROPDOWN COMPONENT ---
+// --- ULTRA-PREMIUM INTERACTIVE DROPDOWN WITH ICONS ---
 const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -55,10 +54,11 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) =
             {label && <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">{label}</label>}
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full bg-white border border-slate-200 hover:border-blue-400 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 cursor-pointer flex justify-between items-center transition-all shadow-sm focus-within:ring-4 focus-within:ring-blue-500/10"
+                className="w-full bg-white border border-slate-200 hover:border-blue-400 rounded-xl px-4 py-3.5 text-sm font-bold text-slate-900 cursor-pointer flex justify-between items-center transition-all shadow-sm focus-within:ring-4 focus-within:ring-blue-500/10"
             >
-                <div className="flex items-center gap-2 truncate">
-                    {Icon && <Icon className="w-4 h-4 text-slate-400 font-bold" />}
+                <div className="flex items-center gap-3 truncate">
+                    {/* Render specific option icon if available, else fallback to generic Icon */}
+                    {selectedOption?.iconNode ? selectedOption.iconNode : (Icon && <Icon className="w-4 h-4 text-slate-400 font-bold" />)}
                     <span className="truncate">{selectedOption?.label || "Select..."}</span>
                 </div>
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -69,15 +69,18 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) =
                         initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                         className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden z-50"
                     >
-                        <div className="max-h-56 overflow-y-auto p-1.5 scrollbar-thin scrollbar-thumb-slate-200">
+                        <div className="max-h-64 overflow-y-auto p-1.5 scrollbar-thin scrollbar-thumb-slate-200">
                             {options.map((opt: any) => (
                                 <div
                                     key={opt.value}
                                     onClick={() => { onChange(opt.value); setIsOpen(false); }}
                                     className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
                                 >
-                                    <span className={`text-sm ${value === opt.value ? 'font-black text-blue-600' : 'font-bold text-slate-700'}`}>{opt.label}</span>
-                                    {value === opt.value && <Check className="w-4 h-4 text-blue-600 font-bold" />}
+                                    <div className="flex items-center gap-3 truncate">
+                                        {opt.iconNode}
+                                        <span className={`text-sm ${value === opt.value ? 'font-black text-blue-600' : 'font-bold text-slate-700'}`}>{opt.label}</span>
+                                    </div>
+                                    {value === opt.value && <Check className="w-4 h-4 text-blue-600 font-bold shrink-0 ml-2" />}
                                 </div>
                             ))}
                         </div>
@@ -264,22 +267,17 @@ export default function TransactionsPage() {
             return matchesSearch && matchesType && matchesTime;
         });
 
-        // BUG FIX: Ensure chronological sorting (Newest first)
+        // Ensure chronological sorting (Newest first)
         return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [transactions, searchTerm, typeFilter, timeFilter]);
 
-    // --- DYNAMIC KPI CALCULATOR ---
     const kpis = useMemo(() => {
-        let income = 0;
-        let expense = 0;
-        let transferVol = 0;
-
+        let income = 0; let expense = 0; let transferVol = 0;
         filteredTransactions.forEach(tx => {
             if (tx.type === "INCOME") income += tx.amount;
             if (tx.type === "EXPENSE") expense += tx.amount;
             if (tx.type === "TRANSFER") transferVol += tx.amount;
         });
-
         return { income, expense, transferVol, net: income - expense };
     }, [filteredTransactions]);
 
@@ -288,6 +286,18 @@ export default function TransactionsPage() {
         hidden: { opacity: 0, scale: 0.95, y: 20 },
         visible: { opacity: 1, scale: 1, y: 0, transition: { type: "spring", damping: 25, stiffness: 300 } },
         exit: { opacity: 0, scale: 0.95, y: 20, transition: { duration: 0.2 } }
+    };
+
+    // --- ENHANCED DROPDOWN OPTIONS WITH ICONS ---
+    const parseAccountName = (nameStr: string) => nameStr.includes("::") ? nameStr.split("::")[1] : nameStr;
+    const getAccountIconNode = (acc: any) => {
+        const [parsedBankId] = acc.name.includes("::") ? acc.name.split("::") : [null];
+        const bankConfig = parsedBankId ? INDIAN_BANK_DIRECTORY.find(b => b.id === parsedBankId) : null;
+        const isCash = acc.type === 'CASH';
+
+        if (isCash) return <div className="w-6 h-6 bg-emerald-50 text-emerald-600 rounded-md flex items-center justify-center shrink-0 border border-emerald-100"><Banknote className="w-3.5 h-3.5" /></div>;
+        if (bankConfig) return <div className="w-6 h-6 bg-white rounded-md border border-slate-200 p-0.5 shrink-0 flex items-center justify-center"><img src={`https://img.logo.dev/${bankConfig.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-full h-full object-contain" /></div>;
+        return <div className="w-6 h-6 bg-blue-50 text-blue-600 rounded-md flex items-center justify-center shrink-0 border border-blue-100"><Landmark className="w-3.5 h-3.5" /></div>;
     };
 
     const typeOptions = [
@@ -304,12 +314,23 @@ export default function TransactionsPage() {
         { label: "All Time", value: "ALL" }
     ];
 
-    const categoryOptions = (form.type === "INCOME" ? INCOME_CATEGORIES : form.type === "TRANSFER" ? TRANSFER_CATEGORIES : EXPENSE_CATEGORIES).map(c => ({ label: c, value: c }));
+    const categoryOptions = (form.type === "INCOME" ? INCOME_CATEGORIES : form.type === "TRANSFER" ? TRANSFER_CATEGORIES : EXPENSE_CATEGORIES).map(c => ({
+        label: c,
+        value: c,
+        iconNode: <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border shadow-sm ${form.type === 'INCOME' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : form.type === 'TRANSFER' ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>{getCategoryIcon(c, form.type, "w-3 h-3")}</div>
+    }));
 
-    // Safely parse account names for the dropdown
-    const parseAccountName = (nameStr: string) => nameStr.includes("::") ? nameStr.split("::")[1] : nameStr;
-    const accountOptions = accounts.map(a => ({ label: `${parseAccountName(a.name)} (${formatINR(a.currentBalance)})`, value: a.id }));
-    const targetAccountOptions = accounts.filter(a => a.id !== form.accountId).map(a => ({ label: `${parseAccountName(a.name)} (${formatINR(a.currentBalance)})`, value: a.id }));
+    const accountOptions = accounts.map(a => ({
+        label: `${parseAccountName(a.name)} (${formatINR(a.currentBalance)})`,
+        value: a.id,
+        iconNode: getAccountIconNode(a)
+    }));
+
+    const targetAccountOptions = accounts.filter(a => a.id !== form.accountId).map(a => ({
+        label: `${parseAccountName(a.name)} (${formatINR(a.currentBalance)})`,
+        value: a.id,
+        iconNode: getAccountIconNode(a)
+    }));
 
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F0F4F8]"><Loader2 className="h-8 w-8 animate-spin text-blue-600 font-bold" strokeWidth={3} /></div>;
 
@@ -421,7 +442,7 @@ export default function TransactionsPage() {
                                     const isIncome = tx.type === "INCOME";
                                     const isTransfer = tx.type === "TRANSFER";
 
-                                    // Parse accounts
+                                    // Parse accounts safely for rendering
                                     const account = accounts.find(a => a.id === tx.accountId);
                                     const toAccount = accounts.find(a => a.id === tx.toAccountId);
 
@@ -436,44 +457,63 @@ export default function TransactionsPage() {
                                     const destAcc = isTransfer ? parseAccount(toAccount) : null;
 
                                     return (
-                                        <div key={tx.id} className="group p-5 sm:p-6 hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative">
+                                        <div key={tx.id} className="group p-5 sm:p-6 hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-5 relative">
 
                                             {/* Hover Accent Bar */}
                                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-transparent group-hover:bg-blue-500 transition-colors"></div>
 
-                                            <div className="flex items-center gap-4 min-w-0 flex-1 pl-2 sm:pl-4">
+                                            <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1 pl-2 sm:pl-4">
                                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm transition-transform group-hover:scale-105 ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
                                                     isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' :
                                                         'bg-rose-50 border-rose-100 text-rose-600'
                                                     }`}>
                                                     {getCategoryIcon(tx.category, tx.type)}
                                                 </div>
-                                                <div className="min-w-0">
-                                                    <p className="text-base font-black text-slate-900 truncate tracking-tight">{tx.category}</p>
-                                                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 mt-1.5">
-                                                        <span className="truncate max-w-[150px] sm:max-w-[250px]">{tx.note || (isTransfer ? "Internal Transfer" : "No description")}</span>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-base font-black text-slate-900 truncate tracking-tight mb-1">{tx.category}</p>
+
+                                                    <div className="flex items-center gap-2.5 flex-wrap">
+                                                        <span className="text-xs font-bold text-slate-500 truncate max-w-[150px] sm:max-w-[200px]">{tx.note || (isTransfer ? "Internal Transfer" : "No description")}</span>
                                                         <span className="hidden sm:inline text-slate-300">•</span>
 
-                                                        {/* Bank Entity Display */}
-                                                        <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-0.5 rounded-md shadow-sm">
-                                                            {sourceAcc.isCash ? <Banknote className="w-3 h-3 text-emerald-500" /> : sourceAcc.domain ? <img src={`https://img.logo.dev/${sourceAcc.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-3 h-3 object-contain" /> : <Landmark className="w-3 h-3 text-blue-500" />}
-                                                            <span className="font-mono text-[9px] font-black uppercase tracking-wider text-slate-700 truncate max-w-[80px]">{sourceAcc.alias}</span>
-                                                        </div>
+                                                        {/* Premium Bank Entity Display */}
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg shadow-sm shrink-0">
+                                                                {sourceAcc.isCash ? (
+                                                                    <div className="p-1 bg-emerald-100 rounded-md"><Banknote className="w-3 h-3 text-emerald-700" /></div>
+                                                                ) : sourceAcc.domain ? (
+                                                                    <div className="w-5 h-5 bg-white border border-slate-200 rounded-md p-0.5 shadow-sm shrink-0 flex items-center justify-center">
+                                                                        <img src={`https://img.logo.dev/${sourceAcc.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-full h-full object-contain" />
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="p-1 bg-blue-100 rounded-md"><Landmark className="w-3 h-3 text-blue-700" /></div>
+                                                                )}
+                                                                <span className="font-bold text-[11px] sm:text-xs text-slate-700 truncate max-w-[100px]">{sourceAcc.alias}</span>
+                                                            </div>
 
-                                                        {isTransfer && destAcc && (
-                                                            <>
-                                                                <ArrowRightLeft className="w-3 h-3 text-slate-400 shrink-0" />
-                                                                <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2 py-0.5 rounded-md shadow-sm">
-                                                                    {destAcc.isCash ? <Banknote className="w-3 h-3 text-emerald-500" /> : destAcc.domain ? <img src={`https://img.logo.dev/${destAcc.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-3 h-3 object-contain" /> : <Landmark className="w-3 h-3 text-blue-500" />}
-                                                                    <span className="font-mono text-[9px] font-black uppercase tracking-wider text-slate-700 truncate max-w-[80px]">{destAcc.alias}</span>
-                                                                </div>
-                                                            </>
-                                                        )}
+                                                            {isTransfer && destAcc && (
+                                                                <>
+                                                                    <ArrowRightLeft className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg shadow-sm shrink-0">
+                                                                        {destAcc.isCash ? (
+                                                                            <div className="p-1 bg-emerald-100 rounded-md"><Banknote className="w-3 h-3 text-emerald-700" /></div>
+                                                                        ) : destAcc.domain ? (
+                                                                            <div className="w-5 h-5 bg-white border border-slate-200 rounded-md p-0.5 shadow-sm shrink-0 flex items-center justify-center">
+                                                                                <img src={`https://img.logo.dev/${destAcc.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-full h-full object-contain" />
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="p-1 bg-blue-100 rounded-md"><Landmark className="w-3 h-3 text-blue-700" /></div>
+                                                                        )}
+                                                                        <span className="font-bold text-[11px] sm:text-xs text-slate-700 truncate max-w-[100px]">{destAcc.alias}</span>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-0 pt-4 sm:pt-0 border-slate-100 pl-2 sm:pl-0">
+                                            <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-0 pt-4 sm:pt-0 border-slate-100 pl-2 sm:pl-0 shrink-0">
                                                 <div className="text-left sm:text-right">
                                                     <p className={`text-lg font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
                                                         {isIncome ? "+" : isTransfer ? "⇄" : "-"}{formatINR(tx.amount)}
@@ -484,10 +524,10 @@ export default function TransactionsPage() {
                                                 </div>
 
                                                 <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => handleEditClick(tx)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-xl transition-colors shadow-sm focus:outline-none">
+                                                    <button onClick={() => handleEditClick(tx)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-xl transition-colors shadow-sm focus:outline-none">
                                                         <Pencil className="w-4 h-4 font-bold" strokeWidth={2.5} />
                                                     </button>
-                                                    <button onClick={() => setTxToDelete(tx.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-xl transition-colors shadow-sm focus:outline-none">
+                                                    <button onClick={() => setTxToDelete(tx.id)} className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-xl transition-colors shadow-sm focus:outline-none">
                                                         <Trash2 className="w-4 h-4 font-bold" strokeWidth={2.5} />
                                                     </button>
                                                 </div>
