@@ -12,7 +12,7 @@ import {
     Loader2, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft,
     Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase,
     Pencil, Trash2, Calendar, ShieldAlert, X, Repeat, ChevronDown, Check, Landmark, Banknote,
-    TrendingUp, Info
+    TrendingUp
 } from "lucide-react";
 
 // --- UTILITIES ---
@@ -34,7 +34,7 @@ const getCategoryIcon = (category: string, type: string, sizeClass = "w-5 h-5") 
     }
 };
 
-// --- ULTRA-PREMIUM INTERACTIVE DROPDOWN WITH ICONS & WRAPPING TEXT ---
+// --- ULTRA-PREMIUM INTERACTIVE DROPDOWN WITH ICONS & BALANCES ---
 const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -60,11 +60,11 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) =
                     {selectedOption?.iconNode ? selectedOption.iconNode : (Icon && <Icon className="w-5 h-5 text-slate-400 font-bold shrink-0" />)}
 
                     <div className="flex flex-col items-start min-w-0 flex-1">
-                        <span className="text-sm font-bold text-slate-900 break-words whitespace-normal leading-tight w-full pr-2">
+                        <span className="text-sm font-bold text-slate-900 truncate w-full pr-2">
                             {selectedOption?.label || "Select..."}
                         </span>
                         {selectedOption?.balance && (
-                            <span className="text-[10px] font-mono font-bold text-blue-600 uppercase tracking-widest mt-1 bg-blue-50 px-2 py-0.5 rounded-md">
+                            <span className="text-[10px] font-mono font-bold text-blue-600 uppercase tracking-widest mt-0.5 bg-blue-50 px-2 py-0.5 rounded-md">
                                 {selectedOption.balance} Available
                             </span>
                         )}
@@ -79,7 +79,7 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) =
                         initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.15 }}
                         className="absolute top-[calc(100%+8px)] left-0 w-full min-w-[280px] max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-2xl flex flex-col z-[9999]"
                     >
-                        <div className="max-h-72 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-slate-200">
+                        <div className="max-h-72 overflow-y-auto p-1.5 scrollbar-thin scrollbar-thumb-slate-200">
                             {options.map((opt: any) => (
                                 <div
                                     key={opt.value}
@@ -89,7 +89,7 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) =
                                     <div className="flex items-center gap-3 min-w-0 flex-1">
                                         {opt.iconNode}
                                         <div className="flex flex-col items-start min-w-0 flex-1 pr-2">
-                                            <span className={`text-sm break-words whitespace-normal leading-tight w-full ${value === opt.value ? 'font-black text-blue-600' : 'font-bold text-slate-700'}`}>
+                                            <span className={`text-sm truncate w-full ${value === opt.value ? 'font-black text-blue-600' : 'font-bold text-slate-700'}`}>
                                                 {opt.label}
                                             </span>
                                             {opt.balance && (
@@ -121,7 +121,7 @@ export default function TransactionsPage() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [txToDelete, setTxToDelete] = useState<string | null>(null);
-    const [expandedTxId, setExpandedTxId] = useState<string | null>(null); // UX Expansion State
+    const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [typeFilter, setTypeFilter] = useState("ALL");
@@ -286,7 +286,15 @@ export default function TransactionsPage() {
             return matchesSearch && matchesType && matchesTime;
         });
 
-        return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        // FLAWLESS SORTING: Resolves millisecond ties perfectly
+        return filtered.sort((a, b) => {
+            const timeA = new Date(a.date).getTime();
+            const timeB = new Date(b.date).getTime();
+            if (timeB !== timeA) return timeB - timeA;
+            const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return createdB - createdA;
+        });
     }, [transactions, searchTerm, typeFilter, timeFilter]);
 
     const kpis = useMemo(() => {
@@ -425,14 +433,14 @@ export default function TransactionsPage() {
 
                     {/* FILTER ENGINE */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row gap-4 mb-8">
-                        <div className="relative flex-1">
+                        <div className="relative flex-1 min-w-0">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 font-bold" strokeWidth={3} />
                             <input
                                 type="text" placeholder="Search category, notes..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full bg-white border border-slate-200/80 rounded-2xl pl-11 pr-4 py-3.5 text-sm font-black text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
                             />
                         </div>
-                        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+                        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto shrink-0">
                             <div className="w-full sm:w-48">
                                 <PremiumDropdown value={typeFilter} options={typeOptions} onChange={setTypeFilter} icon={Filter} />
                             </div>
@@ -442,16 +450,16 @@ export default function TransactionsPage() {
                         </div>
                     </motion.div>
 
-                    {/* --- MAIN LEDGER TABLE (WITH EXPANDABLE ROWS & UNBOXED ICONS) --- */}
-                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="bg-white border border-slate-200/80 rounded-[2rem] overflow-hidden shadow-sm">
-                        <div className="divide-y divide-slate-100">
+                    {/* --- MAIN LEDGER TABLE (ULTRA PREMIUM EXPANSION) --- */}
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="bg-white border border-slate-200/80 rounded-[2rem] shadow-sm">
+                        <div className="flex flex-col p-2 sm:p-4 gap-1">
                             {fetching ? (
                                 <div className="py-24 flex flex-col items-center justify-center">
                                     <Loader2 className="w-8 h-8 animate-spin text-blue-600 font-bold mb-4" strokeWidth={3} />
                                     <span className="text-xs font-bold text-slate-500 uppercase tracking-widest animate-pulse">Decrypting Ledger...</span>
                                 </div>
                             ) : filteredTransactions.length === 0 ? (
-                                <div className="py-32 text-center flex flex-col items-center justify-center bg-slate-50/50">
+                                <div className="py-32 text-center flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl">
                                     <div className="p-4 bg-white border border-slate-200 border-dashed rounded-2xl mb-4">
                                         <Receipt className="w-8 h-8 text-slate-300" strokeWidth={2} />
                                     </div>
@@ -466,47 +474,51 @@ export default function TransactionsPage() {
 
                                     const account = accounts.find(a => a.id === tx.accountId);
                                     const toAccount = accounts.find(a => a.id === tx.toAccountId);
+                                    const destAcc = toAccount;
 
                                     const sourceAlias = parseAccountName(account?.name || "");
                                     const destAlias = isTransfer ? parseAccountName(toAccount?.name || "") : null;
 
                                     return (
-                                        <div key={tx.id} className="flex flex-col transition-colors border-l-4 border-transparent hover:border-blue-500">
+                                        <div
+                                            key={tx.id}
+                                            // The "Card-Lift" Highlight effect for mobile/desktop
+                                            className={`group flex flex-col transition-all duration-300 ease-out border-b border-slate-100 last:border-0 overflow-hidden
+                                                ${isExpanded ? 'bg-white shadow-xl rounded-2xl my-3 border-transparent ring-4 ring-blue-500/10 z-10' : 'hover:bg-slate-50/80 rounded-xl'}`}
+                                        >
 
                                             {/* THE MAIN ROW */}
                                             <div
                                                 onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
-                                                className={`group p-4 sm:p-6 transition-colors flex items-center justify-between gap-4 cursor-pointer select-none ${isExpanded ? 'bg-slate-50/80' : 'hover:bg-slate-50/50'}`}
+                                                className={`p-4 sm:p-5 transition-colors flex items-center justify-between gap-3 sm:gap-4 cursor-pointer select-none ${isExpanded ? 'pb-4' : ''}`}
                                             >
-                                                <div className="flex items-center gap-4 min-w-0 flex-1 pl-1">
-                                                    <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm transition-transform group-hover:scale-105 ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
-                                                        isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' :
-                                                            'bg-rose-50 border-rose-100 text-rose-600'
-                                                        }`}>
+                                                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 pl-1">
+                                                    <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-transform ${isExpanded ? 'scale-110 shadow-md' : 'group-hover:scale-105 border'} 
+                                                        ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
                                                         {getCategoryIcon(tx.category, tx.type)}
                                                     </div>
 
                                                     <div className="min-w-0 flex-1">
-                                                        <p className="text-base font-black text-slate-900 truncate tracking-tight mb-1">
+                                                        <p className="text-base font-black text-slate-900 truncate tracking-tight mb-0.5 sm:mb-1">
                                                             {tx.category}
                                                         </p>
 
-                                                        {/* UNBOXED BANK ICONS & DATE ROW */}
-                                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 flex-wrap">
-                                                            <span>{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
-                                                            <span className="text-slate-300">•</span>
+                                                        {/* UNBOXED BANK ICONS & DATE ROW (Zero Overflow) */}
+                                                        <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold text-slate-500 flex-wrap">
+                                                            <span className="shrink-0">{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                                                            <span className="text-slate-300 shrink-0">•</span>
 
-                                                            <div className="flex items-center gap-1.5 text-slate-600">
-                                                                {getAccountIconNode(account, "w-3.5 h-3.5")}
-                                                                <span className="font-bold text-[11px] sm:text-xs uppercase tracking-wider truncate max-w-[120px]">{sourceAlias}</span>
+                                                            <div className="flex items-center gap-1.5 text-slate-600 min-w-0">
+                                                                <div className="shrink-0">{getAccountIconNode(account, "w-3.5 h-3.5")}</div>
+                                                                <span className="font-bold uppercase tracking-wider truncate max-w-[90px] sm:max-w-[150px]">{sourceAlias}</span>
                                                             </div>
 
                                                             {isTransfer && toAccount && (
                                                                 <>
                                                                     <ArrowRightLeft className="w-3 h-3 text-slate-400 shrink-0 mx-0.5" />
-                                                                    <div className="flex items-center gap-1.5 text-slate-600">
-                                                                        {getAccountIconNode(toAccount, "w-3.5 h-3.5")}
-                                                                        <span className="font-bold text-[11px] sm:text-xs uppercase tracking-wider truncate max-w-[120px]">{destAlias}</span>
+                                                                    <div className="flex items-center gap-1.5 text-slate-600 min-w-0">
+                                                                        <div className="shrink-0">{getAccountIconNode(toAccount, "w-3.5 h-3.5")}</div>
+                                                                        <span className="font-bold uppercase tracking-wider truncate max-w-[90px] sm:max-w-[150px]">{destAlias}</span>
                                                                     </div>
                                                                 </>
                                                             )}
@@ -514,61 +526,61 @@ export default function TransactionsPage() {
                                                     </div>
                                                 </div>
 
-                                                <div className="text-right shrink-0 pr-2">
-                                                    <p className={`text-lg sm:text-xl font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
+                                                <div className="text-right shrink-0 pr-1 sm:pr-2">
+                                                    <p className={`text-base sm:text-xl font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
                                                         {isIncome ? "+" : isTransfer ? "⇄" : "-"}{formatINR(tx.amount)}
                                                     </p>
                                                 </div>
                                             </div>
 
-                                            {/* THE EXPANDED RECEIPT VIEW (APPLE CARD STYLE) */}
+                                            {/* THE EXPANDED RECEIPT VIEW (Tear-off Style) */}
                                             <AnimatePresence>
                                                 {isExpanded && (
                                                     <motion.div
-                                                        initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                                                        className="overflow-hidden bg-slate-50/80 border-t border-slate-100"
+                                                        initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+                                                        className="bg-slate-50/50 border-t border-slate-200 border-dashed mx-4 sm:mx-6"
                                                     >
-                                                        <div className="p-4 sm:p-6 sm:pl-[5.5rem] flex flex-col sm:flex-row justify-between gap-6" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="py-5 sm:pl-[4.5rem] flex flex-col md:flex-row justify-between gap-6" onClick={(e) => e.stopPropagation()}>
 
-                                                            <div className="space-y-4 flex-1">
+                                                            <div className="space-y-4 flex-1 min-w-0">
                                                                 {tx.note && (
-                                                                    <div className="flex items-start gap-4">
-                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-16 pt-0.5">Notes</span>
-                                                                        <span className="text-sm font-bold text-slate-700 leading-relaxed max-w-md">{tx.note}</span>
+                                                                    <div className="flex items-start gap-3 sm:gap-4">
+                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-14 sm:w-16 pt-0.5 shrink-0">Notes</span>
+                                                                        <span className="text-sm font-bold text-slate-700 leading-relaxed break-words whitespace-normal w-full">{tx.note}</span>
                                                                     </div>
                                                                 )}
 
-                                                                <div className="flex items-center gap-4">
-                                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">Balance</span>
-                                                                    <div className="flex items-center gap-2">
-                                                                        {getAccountIconNode(account, "w-4 h-4")}
-                                                                        <span className="text-sm font-black text-slate-900 mr-2">{sourceAlias}</span>
-                                                                        <span className="text-xs font-mono font-bold text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm">
-                                                                            Remaining: {formatINR(account?.currentBalance || 0)}
+                                                                <div className="flex items-center gap-3 sm:gap-4">
+                                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-14 sm:w-16 shrink-0">Balance</span>
+                                                                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                                                        {getAccountIconNode(account, "w-4 h-4 shrink-0")}
+                                                                        <span className="text-sm font-black text-slate-900 truncate max-w-[120px] sm:max-w-[200px]">{sourceAlias}</span>
+                                                                        <span className="text-[11px] sm:text-xs font-mono font-black text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm shrink-0">
+                                                                            Left: {formatINR(account?.currentBalance || 0)}
                                                                         </span>
                                                                     </div>
                                                                 </div>
 
                                                                 {isTransfer && toAccount && (
-                                                                    <div className="flex items-center gap-4">
-                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">Dest Bal</span>
-                                                                        <div className="flex items-center gap-2">
-                                                                            {getAccountIconNode(toAccount, "w-4 h-4")}
-                                                                            <span className="text-sm font-black text-slate-900 mr-2">{destAlias}</span>
-                                                                            <span className="text-xs font-mono font-bold text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm">
-                                                                                Remaining: {formatINR(toAccount.currentBalance)}
+                                                                    <div className="flex items-center gap-3 sm:gap-4">
+                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-14 sm:w-16 shrink-0">Dest Bal</span>
+                                                                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                                                            {getAccountIconNode(toAccount, "w-4 h-4 shrink-0")}
+                                                                            <span className="text-sm font-black text-slate-900 truncate max-w-[120px] sm:max-w-[200px]">{destAlias}</span>
+                                                                            <span className="text-[11px] sm:text-xs font-mono font-black text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm shrink-0">
+                                                                                Left: {formatINR(toAccount.currentBalance || 0)}
                                                                             </span>
                                                                         </div>
                                                                     </div>
                                                                 )}
                                                             </div>
 
-                                                            {/* ACTION BUTTONS MOVED TO EXPANDED VIEW */}
-                                                            <div className="flex sm:flex-col justify-end gap-2 shrink-0 border-t sm:border-t-0 sm:border-l border-slate-200 pt-4 sm:pt-0 sm:pl-6">
-                                                                <button onClick={(e) => handleEditClick(tx, e)} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors">
+                                                            {/* Mobile-Optimized Grid Buttons */}
+                                                            <div className="grid grid-cols-2 md:flex md:flex-col justify-end gap-3 shrink-0 border-t md:border-t-0 md:border-l border-slate-200 border-dashed pt-4 md:pt-0 md:pl-6">
+                                                                <button onClick={(e) => handleEditClick(tx, e)} className="flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm font-black text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors shadow-sm focus:outline-none">
                                                                     <Pencil className="w-4 h-4" strokeWidth={2.5} /> Edit
                                                                 </button>
-                                                                <button onClick={() => setTxToDelete(tx.id)} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors">
+                                                                <button onClick={() => setTxToDelete(tx.id)} className="flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm font-black text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors shadow-sm focus:outline-none">
                                                                     <Trash2 className="w-4 h-4" strokeWidth={2.5} /> Purge
                                                                 </button>
                                                             </div>
@@ -609,10 +621,8 @@ export default function TransactionsPage() {
                     <AnimatePresence>
                         {isFormOpen && (
                             <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
-                                {/* The background overlay */}
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setIsFormOpen(false)} />
 
-                                {/* Modal Wrapper (allows dropdowns to overflow safely) */}
                                 <div className="min-h-full flex items-center justify-center w-full my-4 sm:my-8">
                                     <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] w-full max-w-xl shadow-2xl flex flex-col">
                                         <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 bg-slate-50/80 rounded-t-[2rem]">
@@ -623,7 +633,6 @@ export default function TransactionsPage() {
                                         <div className="p-6 sm:p-8">
                                             <form id="txForm" onSubmit={handleSubmit} className="space-y-8">
 
-                                                {/* Tri-State Type Switcher */}
                                                 <div className="flex flex-col sm:flex-row p-1.5 gap-1.5 sm:gap-0 bg-slate-100 border border-slate-200 rounded-xl">
                                                     <button type="button" onClick={() => handleTypeChange("EXPENSE")} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all ${form.type === "EXPENSE" ? "bg-white text-rose-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-900"}`}>Expense</button>
                                                     <button type="button" onClick={() => handleTypeChange("INCOME")} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all ${form.type === "INCOME" ? "bg-white text-emerald-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-900"}`}>Income</button>
@@ -659,16 +668,16 @@ export default function TransactionsPage() {
                                                 </div>
 
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-slate-100 pt-6">
-                                                    <div className="w-full">
+                                                    <div className="w-full min-w-0">
                                                         <PremiumDropdown label={form.type === "TRANSFER" ? "Source Account" : "Account"} value={form.accountId} options={accountOptions} onChange={(val: any) => setForm({ ...form, accountId: val })} />
                                                     </div>
 
                                                     {form.type === "TRANSFER" ? (
-                                                        <div className="w-full">
+                                                        <div className="w-full min-w-0">
                                                             <PremiumDropdown label="Destination Account" value={form.toAccountId} options={targetAccountOptions} onChange={(val: any) => setForm({ ...form, toAccountId: val })} />
                                                         </div>
                                                     ) : (
-                                                        <div className="w-full">
+                                                        <div className="w-full min-w-0">
                                                             <PremiumDropdown label="Category" value={form.category} options={categoryOptions} onChange={(val: any) => setForm({ ...form, category: val })} />
                                                         </div>
                                                     )}
