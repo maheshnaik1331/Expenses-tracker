@@ -12,7 +12,7 @@ import {
     Loader2, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft,
     Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase,
     Pencil, Trash2, Calendar, ShieldAlert, X, Repeat, ChevronDown, Check, Landmark, Banknote,
-    TrendingUp
+    TrendingUp, Info
 } from "lucide-react";
 
 // --- UTILITIES ---
@@ -34,7 +34,7 @@ const getCategoryIcon = (category: string, type: string, sizeClass = "w-5 h-5") 
     }
 };
 
-// --- ULTRA-PREMIUM INTERACTIVE DROPDOWN WITH ICONS & BALANCES ---
+// --- ULTRA-PREMIUM INTERACTIVE DROPDOWN WITH ICONS & WRAPPING TEXT ---
 const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -54,16 +54,17 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) =
             {label && <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">{label}</label>}
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full bg-white border border-slate-300 hover:border-blue-400 rounded-xl px-4 min-h-[54px] flex justify-between items-center transition-all shadow-sm focus-within:ring-4 focus-within:ring-blue-500/10 cursor-pointer"
+                className="w-full bg-white border border-slate-300 hover:border-blue-400 rounded-xl px-4 min-h-[56px] flex justify-between items-center transition-all shadow-sm focus-within:ring-4 focus-within:ring-blue-500/10 cursor-pointer"
             >
                 <div className="flex items-center gap-3 min-w-0 flex-1 py-2">
-                    {/* Render specific option icon if available, else fallback to generic Icon */}
                     {selectedOption?.iconNode ? selectedOption.iconNode : (Icon && <Icon className="w-5 h-5 text-slate-400 font-bold shrink-0" />)}
 
                     <div className="flex flex-col items-start min-w-0 flex-1">
-                        <span className="text-sm font-bold text-slate-900 truncate w-full">{selectedOption?.label || "Select..."}</span>
+                        <span className="text-sm font-bold text-slate-900 break-words whitespace-normal leading-tight w-full pr-2">
+                            {selectedOption?.label || "Select..."}
+                        </span>
                         {selectedOption?.balance && (
-                            <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest mt-0.5">
+                            <span className="text-[10px] font-mono font-bold text-blue-600 uppercase tracking-widest mt-1 bg-blue-50 px-2 py-0.5 rounded-md">
                                 {selectedOption.balance} Available
                             </span>
                         )}
@@ -76,27 +77,29 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) =
                 {isOpen && (
                     <motion.div
                         initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.15 }}
-                        className="absolute top-[calc(100%+8px)] left-0 w-full min-w-[260px] bg-white border border-slate-200 rounded-xl shadow-2xl flex flex-col overflow-hidden z-[9999]"
+                        className="absolute top-[calc(100%+8px)] left-0 w-full min-w-[280px] max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-2xl flex flex-col z-[9999]"
                     >
-                        <div className="max-h-64 overflow-y-auto p-1.5 scrollbar-thin scrollbar-thumb-slate-200">
+                        <div className="max-h-72 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-slate-200">
                             {options.map((opt: any) => (
                                 <div
                                     key={opt.value}
                                     onClick={() => { onChange(opt.value); setIsOpen(false); }}
-                                    className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
+                                    className="flex items-center justify-between px-3 py-3 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors"
                                 >
                                     <div className="flex items-center gap-3 min-w-0 flex-1">
                                         {opt.iconNode}
-                                        <div className="flex flex-col items-start min-w-0 flex-1">
-                                            <span className={`text-sm truncate w-full ${value === opt.value ? 'font-black text-blue-600' : 'font-bold text-slate-700'}`}>{opt.label}</span>
+                                        <div className="flex flex-col items-start min-w-0 flex-1 pr-2">
+                                            <span className={`text-sm break-words whitespace-normal leading-tight w-full ${value === opt.value ? 'font-black text-blue-600' : 'font-bold text-slate-700'}`}>
+                                                {opt.label}
+                                            </span>
                                             {opt.balance && (
-                                                <span className={`text-[10px] font-mono font-bold mt-0.5 ${value === opt.value ? 'text-blue-400' : 'text-slate-400'}`}>
+                                                <span className={`text-[10px] font-mono font-bold mt-1 px-2 py-0.5 rounded-md ${value === opt.value ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
                                                     {opt.balance}
                                                 </span>
                                             )}
                                         </div>
                                     </div>
-                                    {value === opt.value && <Check className="w-4 h-4 text-blue-600 font-bold shrink-0 ml-3" />}
+                                    {value === opt.value && <Check className="w-4 h-4 text-blue-600 font-bold shrink-0 ml-2" />}
                                 </div>
                             ))}
                         </div>
@@ -118,6 +121,7 @@ export default function TransactionsPage() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [txToDelete, setTxToDelete] = useState<string | null>(null);
+    const [expandedTxId, setExpandedTxId] = useState<string | null>(null); // UX Expansion State
 
     const [searchTerm, setSearchTerm] = useState("");
     const [typeFilter, setTypeFilter] = useState("ALL");
@@ -180,7 +184,8 @@ export default function TransactionsPage() {
         });
     };
 
-    const handleEditClick = (tx: any) => {
+    const handleEditClick = (tx: any, e: React.MouseEvent) => {
+        e.stopPropagation();
         setForm({
             type: tx.type,
             amount: tx.amount.toString(),
@@ -206,6 +211,7 @@ export default function TransactionsPage() {
         } finally {
             setSubmitting(false);
             setTxToDelete(null);
+            setExpandedTxId(null);
         }
     };
 
@@ -259,15 +265,12 @@ export default function TransactionsPage() {
         }
     };
 
-    // --- DYNAMIC FILTERING & CHRONOLOGICAL SORTING ENGINE ---
     const filteredTransactions = useMemo(() => {
         const now = new Date();
         const filtered = transactions.filter((tx) => {
             const txDate = new Date(tx.date);
-
             const matchesSearch = tx.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (tx.note && tx.note.toLowerCase().includes(searchTerm.toLowerCase()));
-
             const matchesType = typeFilter === "ALL" || tx.type === typeFilter;
 
             let matchesTime = true;
@@ -283,7 +286,6 @@ export default function TransactionsPage() {
             return matchesSearch && matchesType && matchesTime;
         });
 
-        // Ensure chronological sorting (Newest first)
         return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [transactions, searchTerm, typeFilter, timeFilter]);
 
@@ -304,16 +306,18 @@ export default function TransactionsPage() {
         exit: { opacity: 0, scale: 0.95, y: 20, transition: { duration: 0.2 } }
     };
 
-    // --- ENHANCED DROPDOWN OPTIONS WITH ICONS ---
+    // --- PARSING UTILITIES ---
     const parseAccountName = (nameStr: string) => nameStr.includes("::") ? nameStr.split("::")[1] : nameStr;
-    const getAccountIconNode = (acc: any) => {
+
+    const getAccountIconNode = (acc: any, sizeClass = "w-5 h-5") => {
+        if (!acc) return <Landmark className={`${sizeClass} text-slate-400`} />;
         const [parsedBankId] = acc.name.includes("::") ? acc.name.split("::") : [null];
         const bankConfig = parsedBankId ? INDIAN_BANK_DIRECTORY.find(b => b.id === parsedBankId) : null;
         const isCash = acc.type === 'CASH';
 
-        if (isCash) return <div className="w-8 h-8 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center shrink-0 border border-emerald-100"><Banknote className="w-4 h-4" /></div>;
-        if (bankConfig) return <div className="w-8 h-8 bg-white rounded-lg border border-slate-200 p-1 shrink-0 flex items-center justify-center"><img src={`https://img.logo.dev/${bankConfig.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-full h-full object-contain" /></div>;
-        return <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0 border border-blue-100"><Landmark className="w-4 h-4" /></div>;
+        if (isCash) return <Banknote className={`${sizeClass} text-emerald-600 font-bold`} />;
+        if (bankConfig) return <img src={`https://img.logo.dev/${bankConfig.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className={`${sizeClass} object-contain`} />;
+        return <Landmark className={`${sizeClass} text-blue-600 font-bold`} />;
     };
 
     const typeOptions = [
@@ -340,14 +344,14 @@ export default function TransactionsPage() {
         label: parseAccountName(a.name),
         balance: formatINR(a.currentBalance),
         value: a.id,
-        iconNode: getAccountIconNode(a)
+        iconNode: <div className="w-8 h-8 rounded-lg border border-slate-200 shadow-sm flex items-center justify-center bg-white shrink-0 p-1.5">{getAccountIconNode(a, "w-full h-full")}</div>
     }));
 
     const targetAccountOptions = accounts.filter(a => a.id !== form.accountId).map(a => ({
         label: parseAccountName(a.name),
         balance: formatINR(a.currentBalance),
         value: a.id,
-        iconNode: getAccountIconNode(a)
+        iconNode: <div className="w-8 h-8 rounded-lg border border-slate-200 shadow-sm flex items-center justify-center bg-white shrink-0 p-1.5">{getAccountIconNode(a, "w-full h-full")}</div>
     }));
 
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F0F4F8]"><Loader2 className="h-8 w-8 animate-spin text-blue-600 font-bold" strokeWidth={3} /></div>;
@@ -367,7 +371,6 @@ export default function TransactionsPage() {
 
                 <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 relative overflow-x-hidden">
 
-                    {/* Header Section */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 border-b border-slate-200/80 pb-8">
                         <div>
                             <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">Global Ledger</h1>
@@ -382,7 +385,7 @@ export default function TransactionsPage() {
                         </button>
                     </motion.div>
 
-                    {/* --- DYNAMIC KPI STRIP --- */}
+                    {/* KPI STRIP */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6 mb-8">
                         <div className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-sm flex items-center justify-between group hover:shadow-md transition-shadow">
                             <div>
@@ -420,7 +423,7 @@ export default function TransactionsPage() {
                         </div>
                     </motion.div>
 
-                    {/* --- FILTER ENGINE --- */}
+                    {/* FILTER ENGINE */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="flex flex-col md:flex-row gap-4 mb-8">
                         <div className="relative flex-1">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 font-bold" strokeWidth={3} />
@@ -429,17 +432,17 @@ export default function TransactionsPage() {
                                 className="w-full bg-white border border-slate-200/80 rounded-2xl pl-11 pr-4 py-3.5 text-sm font-black text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
                             />
                         </div>
-                        <div className="flex gap-4 w-full md:w-auto">
-                            <div className="w-full md:w-48">
+                        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+                            <div className="w-full sm:w-48">
                                 <PremiumDropdown value={typeFilter} options={typeOptions} onChange={setTypeFilter} icon={Filter} />
                             </div>
-                            <div className="w-full md:w-48">
+                            <div className="w-full sm:w-48">
                                 <PremiumDropdown value={timeFilter} options={timeOptions} onChange={setTimeFilter} icon={Calendar} />
                             </div>
                         </div>
                     </motion.div>
 
-                    {/* --- MAIN LEDGER TABLE --- */}
+                    {/* --- MAIN LEDGER TABLE (WITH EXPANDABLE ROWS & UNBOXED ICONS) --- */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="bg-white border border-slate-200/80 rounded-[2rem] overflow-hidden shadow-sm">
                         <div className="divide-y divide-slate-100">
                             {fetching ? (
@@ -459,77 +462,120 @@ export default function TransactionsPage() {
                                 filteredTransactions.map((tx) => {
                                     const isIncome = tx.type === "INCOME";
                                     const isTransfer = tx.type === "TRANSFER";
+                                    const isExpanded = expandedTxId === tx.id;
 
                                     const account = accounts.find(a => a.id === tx.accountId);
                                     const toAccount = accounts.find(a => a.id === tx.toAccountId);
 
-                                    const parseAccount = (acc: any) => {
-                                        if (!acc) return { alias: "Unknown", domain: null, isCash: false };
-                                        const [parsedBankId, parsedAlias] = acc.name.includes("::") ? acc.name.split("::") : [null, acc.name];
-                                        const bankConfig = parsedBankId ? INDIAN_BANK_DIRECTORY.find(b => b.id === parsedBankId) : null;
-                                        return { alias: parsedAlias || "Institution", domain: bankConfig?.domain, isCash: acc.type === 'CASH' };
-                                    };
-
-                                    const sourceAcc = parseAccount(account);
-                                    const destAcc = isTransfer ? parseAccount(toAccount) : null;
+                                    const sourceAlias = parseAccountName(account?.name || "");
+                                    const destAlias = isTransfer ? parseAccountName(toAccount?.name || "") : null;
 
                                     return (
-                                        <div key={tx.id} className="group p-5 sm:p-6 hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative">
+                                        <div key={tx.id} className="flex flex-col transition-colors border-l-4 border-transparent hover:border-blue-500">
 
-                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-transparent group-hover:bg-blue-500 transition-colors"></div>
+                                            {/* THE MAIN ROW */}
+                                            <div
+                                                onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
+                                                className={`group p-4 sm:p-6 transition-colors flex items-center justify-between gap-4 cursor-pointer select-none ${isExpanded ? 'bg-slate-50/80' : 'hover:bg-slate-50/50'}`}
+                                            >
+                                                <div className="flex items-center gap-4 min-w-0 flex-1 pl-1">
+                                                    <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm transition-transform group-hover:scale-105 ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
+                                                        isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' :
+                                                            'bg-rose-50 border-rose-100 text-rose-600'
+                                                        }`}>
+                                                        {getCategoryIcon(tx.category, tx.type)}
+                                                    </div>
 
-                                            <div className="flex items-start sm:items-center gap-4 min-w-0 flex-1 pl-2 sm:pl-4">
-                                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm transition-transform group-hover:scale-105 ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' :
-                                                    isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' :
-                                                        'bg-rose-50 border-rose-100 text-rose-600'
-                                                    }`}>
-                                                    {getCategoryIcon(tx.category, tx.type)}
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-base font-black text-slate-900 truncate tracking-tight mb-1">{tx.category}</p>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-base font-black text-slate-900 truncate tracking-tight mb-1">
+                                                            {tx.category}
+                                                        </p>
 
-                                                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 flex-wrap">
-                                                        <span className="truncate max-w-[150px] sm:max-w-[250px]">{tx.note || (isTransfer ? "Internal Transfer" : "No description")}</span>
-                                                        <span className="hidden sm:inline text-slate-300">•</span>
+                                                        {/* UNBOXED BANK ICONS & DATE ROW */}
+                                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 flex-wrap">
+                                                            <span>{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                                                            <span className="text-slate-300">•</span>
 
-                                                        {/* CLEAN BANK DISPLAY (NO BOXES) */}
-                                                        <span className="flex items-center gap-1.5 text-slate-600 bg-slate-100/50 px-2 py-0.5 rounded-md">
-                                                            {sourceAcc.isCash ? <Banknote className="w-3.5 h-3.5 text-emerald-500" /> : sourceAcc.domain ? <img src={`https://img.logo.dev/${sourceAcc.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-3.5 h-3.5 object-contain" /> : <Landmark className="w-3.5 h-3.5 text-blue-500" />}
-                                                            <span className="font-bold text-[11px] uppercase tracking-wider">{sourceAcc.alias}</span>
-                                                        </span>
+                                                            <div className="flex items-center gap-1.5 text-slate-600">
+                                                                {getAccountIconNode(account, "w-3.5 h-3.5")}
+                                                                <span className="font-bold text-[11px] sm:text-xs uppercase tracking-wider truncate max-w-[120px]">{sourceAlias}</span>
+                                                            </div>
 
-                                                        {isTransfer && destAcc && (
-                                                            <>
-                                                                <ArrowRightLeft className="w-3.5 h-3.5 text-slate-400 shrink-0 mx-0.5" />
-                                                                <span className="flex items-center gap-1.5 text-slate-600 bg-slate-100/50 px-2 py-0.5 rounded-md">
-                                                                    {destAcc.isCash ? <Banknote className="w-3.5 h-3.5 text-emerald-500" /> : destAcc.domain ? <img src={`https://img.logo.dev/${destAcc.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className="w-3.5 h-3.5 object-contain" /> : <Landmark className="w-3.5 h-3.5 text-blue-500" />}
-                                                                    <span className="font-bold text-[11px] uppercase tracking-wider">{destAcc.alias}</span>
-                                                                </span>
-                                                            </>
-                                                        )}
+                                                            {isTransfer && toAccount && (
+                                                                <>
+                                                                    <ArrowRightLeft className="w-3 h-3 text-slate-400 shrink-0 mx-0.5" />
+                                                                    <div className="flex items-center gap-1.5 text-slate-600">
+                                                                        {getAccountIconNode(toAccount, "w-3.5 h-3.5")}
+                                                                        <span className="font-bold text-[11px] sm:text-xs uppercase tracking-wider truncate max-w-[120px]">{destAlias}</span>
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
 
-                                            <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-0 pt-4 sm:pt-0 border-slate-100 pl-2 sm:pl-0 shrink-0">
-                                                <div className="text-left sm:text-right">
-                                                    <p className={`text-lg font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
+                                                <div className="text-right shrink-0 pr-2">
+                                                    <p className={`text-lg sm:text-xl font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
                                                         {isIncome ? "+" : isTransfer ? "⇄" : "-"}{formatINR(tx.amount)}
                                                     </p>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-1">
-                                                        {new Date(tx.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                    </p>
-                                                </div>
-
-                                                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => handleEditClick(tx)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-xl transition-colors shadow-sm focus:outline-none">
-                                                        <Pencil className="w-4 h-4 font-bold" strokeWidth={2.5} />
-                                                    </button>
-                                                    <button onClick={() => setTxToDelete(tx.id)} className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-xl transition-colors shadow-sm focus:outline-none">
-                                                        <Trash2 className="w-4 h-4 font-bold" strokeWidth={2.5} />
-                                                    </button>
                                                 </div>
                                             </div>
+
+                                            {/* THE EXPANDED RECEIPT VIEW (APPLE CARD STYLE) */}
+                                            <AnimatePresence>
+                                                {isExpanded && (
+                                                    <motion.div
+                                                        initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                                                        className="overflow-hidden bg-slate-50/80 border-t border-slate-100"
+                                                    >
+                                                        <div className="p-4 sm:p-6 sm:pl-[5.5rem] flex flex-col sm:flex-row justify-between gap-6" onClick={(e) => e.stopPropagation()}>
+
+                                                            <div className="space-y-4 flex-1">
+                                                                {tx.note && (
+                                                                    <div className="flex items-start gap-4">
+                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-16 pt-0.5">Notes</span>
+                                                                        <span className="text-sm font-bold text-slate-700 leading-relaxed max-w-md">{tx.note}</span>
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="flex items-center gap-4">
+                                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">Balance</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {getAccountIconNode(account, "w-4 h-4")}
+                                                                        <span className="text-sm font-black text-slate-900 mr-2">{sourceAlias}</span>
+                                                                        <span className="text-xs font-mono font-bold text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm">
+                                                                            Remaining: {formatINR(account?.currentBalance || 0)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {isTransfer && toAccount && (
+                                                                    <div className="flex items-center gap-4">
+                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">Dest Bal</span>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {getAccountIconNode(toAccount, "w-4 h-4")}
+                                                                            <span className="text-sm font-black text-slate-900 mr-2">{destAlias}</span>
+                                                                            <span className="text-xs font-mono font-bold text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm">
+                                                                                Remaining: {formatINR(toAccount.currentBalance)}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* ACTION BUTTONS MOVED TO EXPANDED VIEW */}
+                                                            <div className="flex sm:flex-col justify-end gap-2 shrink-0 border-t sm:border-t-0 sm:border-l border-slate-200 pt-4 sm:pt-0 sm:pl-6">
+                                                                <button onClick={(e) => handleEditClick(tx, e)} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors">
+                                                                    <Pencil className="w-4 h-4" strokeWidth={2.5} /> Edit
+                                                                </button>
+                                                                <button onClick={() => setTxToDelete(tx.id)} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors">
+                                                                    <Trash2 className="w-4 h-4" strokeWidth={2.5} /> Purge
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
                                         </div>
                                     )
                                 })
@@ -559,27 +605,26 @@ export default function TransactionsPage() {
                         )}
                     </AnimatePresence>
 
-                    {/* --- THE FLAWLESS, UN-CLIPPED ENTRY MODAL --- */}
+                    {/* --- THE FLAWLESS, BREAKOUT ENTRY MODAL --- */}
                     <AnimatePresence>
                         {isFormOpen && (
                             <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
                                 {/* The background overlay */}
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setIsFormOpen(false)} />
 
-                                {/* The Modal Box itself wrapper inside a full height container so the page scrolls if it gets too long */}
-                                <div className="min-h-full flex items-center justify-center w-full my-8">
+                                {/* Modal Wrapper (allows dropdowns to overflow safely) */}
+                                <div className="min-h-full flex items-center justify-center w-full my-4 sm:my-8">
                                     <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] w-full max-w-xl shadow-2xl flex flex-col">
                                         <div className="p-6 sm:p-8 flex items-center justify-between border-b border-slate-100 bg-slate-50/80 rounded-t-[2rem]">
                                             <h2 className="text-xl font-black text-slate-900 tracking-tight">{editingId ? "Update Record" : "Log Capital Movement"}</h2>
                                             <button onClick={() => setIsFormOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-100 rounded-full shadow-sm transition-colors focus:outline-none"><X className="w-5 h-5 font-bold" /></button>
                                         </div>
 
-                                        {/* Notice how overflow-y-auto is REMOVED so dropdowns can spill naturally outside the modal */}
                                         <div className="p-6 sm:p-8">
                                             <form id="txForm" onSubmit={handleSubmit} className="space-y-8">
 
                                                 {/* Tri-State Type Switcher */}
-                                                <div className="flex p-1.5 bg-slate-100 border border-slate-200 rounded-xl">
+                                                <div className="flex flex-col sm:flex-row p-1.5 gap-1.5 sm:gap-0 bg-slate-100 border border-slate-200 rounded-xl">
                                                     <button type="button" onClick={() => handleTypeChange("EXPENSE")} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all ${form.type === "EXPENSE" ? "bg-white text-rose-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-900"}`}>Expense</button>
                                                     <button type="button" onClick={() => handleTypeChange("INCOME")} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all ${form.type === "INCOME" ? "bg-white text-emerald-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-900"}`}>Income</button>
                                                     <button type="button" onClick={() => handleTypeChange("TRANSFER")} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all ${form.type === "TRANSFER" ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-900"}`}>Transfer</button>
