@@ -294,7 +294,7 @@ export default function AccountsPage() {
                                             onClick={confirmDeletion} disabled={submitting}
                                             className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-black py-3 rounded-xl transition-colors shadow-md flex justify-center items-center"
                                         >
-                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
+                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Delete"}
                                         </button>
                                     </div>
                                 </motion.div>

@@ -551,7 +551,7 @@ export default function BillsPage() {
                                 <div className="flex gap-3">
                                     <button onClick={() => setBillToDelete(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-black py-3 rounded-xl transition-colors shadow-sm">Abort</button>
                                     <button onClick={confirmDeletion} disabled={submitting} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-black py-3 rounded-xl transition-colors shadow-md flex justify-center items-center">
-                                        {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
+                                        {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Delete"}
                                     </button>
                                 </div>
                             </motion.div>

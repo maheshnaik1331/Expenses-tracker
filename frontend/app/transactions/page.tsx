@@ -204,7 +204,7 @@ export default function TransactionsPage() {
         try {
             setSubmitting(true);
             await api.delete(`/transactions/${txToDelete}`);
-            toast.success("Transaction purged from ledger.");
+            toast.success("Transaction Deleted from ledger.");
             fetchLedgerData();
         } catch (err) {
             toast.error("Failed to delete transaction.");
@@ -581,7 +581,7 @@ export default function TransactionsPage() {
                                                                     <Pencil className="w-4 h-4" strokeWidth={2.5} /> Edit
                                                                 </button>
                                                                 <button onClick={() => setTxToDelete(tx.id)} className="flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm font-black text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors shadow-sm focus:outline-none">
-                                                                    <Trash2 className="w-4 h-4" strokeWidth={2.5} /> Purge
+                                                                    <Trash2 className="w-4 h-4" strokeWidth={2.5} /> Delete
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -604,12 +604,12 @@ export default function TransactionsPage() {
                                     <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-6 border border-rose-100">
                                         <ShieldAlert className="w-6 h-6 text-rose-600 font-bold" strokeWidth={2.5} />
                                     </div>
-                                    <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Purge Transaction?</h3>
+                                    <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Delete Transaction?</h3>
                                     <p className="text-sm font-bold text-slate-500 mb-8 leading-relaxed">This will erase the record and mathematically reverse its impact on your associated account balances. Proceed?</p>
                                     <div className="flex gap-3">
                                         <button onClick={() => setTxToDelete(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-black py-3.5 rounded-xl transition-colors">Cancel</button>
                                         <button onClick={confirmDeletion} disabled={submitting} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-black py-3.5 rounded-xl flex justify-center items-center shadow-md shadow-rose-600/20">
-                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
+                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Delete"}
                                         </button>
                                     </div>
                                 </motion.div>

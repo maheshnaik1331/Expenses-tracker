@@ -307,7 +307,7 @@ export default function LoansPage() {
         try {
             setSubmitting(true);
             await api.delete(`/loans/${loanToDelete}`);
-            toast.success("Agreement purged from ledger.");
+            toast.success("Agreement Deleted from ledger.");
             fetchLedgerData();
         } catch (err) {
             toast.error("Failed to delete agreement.");
@@ -520,7 +520,7 @@ export default function LoansPage() {
 
                                                     <DropdownMenuSeparator className="bg-slate-100 mx-2 my-1" />
                                                     <DropdownMenuItem onClick={() => setLoanToDelete(loan.id)} className="flex items-center gap-3 font-bold text-sm text-rose-600 py-3 px-3 rounded-xl cursor-pointer hover:bg-rose-50 focus:bg-rose-50">
-                                                        <Trash2 className="w-4 h-4 font-bold" /> Purge Record
+                                                        <Trash2 className="w-4 h-4 font-bold" /> Delete Record
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -761,12 +761,12 @@ export default function LoansPage() {
                                 <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-6 border border-rose-100">
                                     <ShieldAlert className="w-6 h-6 text-rose-600 font-bold" />
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-900 mb-2">Purge Agreement?</h3>
+                                <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Agreement?</h3>
                                 <p className="text-sm font-bold text-slate-500 mb-8">This will completely erase the contract from your matrix. This action cannot be reversed.</p>
                                 <div className="flex gap-3">
                                     <button onClick={() => setLoanToDelete(null)} className="flex-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-bold py-3 rounded-xl transition-colors shadow-sm">Cancel</button>
                                     <button onClick={confirmDeletion} disabled={submitting} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold py-3 rounded-xl flex justify-center items-center shadow-md disabled:opacity-50">
-                                        {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
+                                        {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Delete"}
                                     </button>
                                 </div>
                             </motion.div>
