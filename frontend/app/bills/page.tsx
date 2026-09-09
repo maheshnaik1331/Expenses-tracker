@@ -9,10 +9,10 @@ import { INDIAN_BANK_DIRECTORY } from "@/lib/bank-directory";
 import { toast } from "sonner";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import {
-    CalendarDays, CreditCard, Repeat, CheckCircle2,
+    CalendarDays, Repeat, CheckCircle2,
     Plus, Loader2, Receipt, X, ChevronDown, Check,
     Laptop, Zap, Home, Shield, MoreVertical, Edit2, Trash2, ShieldAlert, Wallet,
-    ListCollapse, Calendar, Landmark, Banknote, Search, FileText, Clock, ArrowRightLeft, ArrowUpRight,
+    ListCollapse, Calendar, Landmark, Banknote, Search, FileText,
     Pencil, Briefcase
 } from "lucide-react";
 import {
@@ -41,6 +41,7 @@ interface RecurringBill {
     accountId: string;
     transactions?: any[];
     account: { id: string; name: string, type: string };
+    status?: string;
 }
 
 // --- UTILITIES ---
@@ -68,7 +69,7 @@ const getCategoryIcon = (cat: string) => {
     }
 };
 
-// --- ULTRA-PREMIUM INTERACTIVE DROPDOWN WITH ICONS & WRAPPING TEXT ---
+// --- FLAWLESS BREAKOUT DROPDOWN ---
 const PremiumDropdown = ({ value, options, onChange, icon: Icon, label, placeholder = "Select..." }: any) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -111,7 +112,7 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label, placehol
                 {isOpen && (
                     <motion.div
                         initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.15 }}
-                        className="absolute top-[calc(100%+8px)] left-0 w-full min-w-[280px] max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-2xl flex flex-col z-[9999]"
+                        className="absolute top-[calc(100%+8px)] left-0 w-full min-w-[280px] max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-2xl flex flex-col overflow-hidden z-[9999]"
                     >
                         <div className="max-h-72 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-slate-200">
                             {options.map((opt: any) => (
@@ -163,12 +164,12 @@ export default function BillsPage() {
     const [nextDueDate, setNextDueDate] = useState(new Date().toISOString().split('T')[0]);
     const [accountId, setAccountId] = useState("");
 
-    // Modals
+    // Modals & History State Restored
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [billToDelete, setBillToDelete] = useState<string | null>(null);
     const [payModalOpen, setPayModalOpen] = useState(false);
     const [activeBill, setActiveBill] = useState<RecurringBill | null>(null);
-    const [billHistory, setBillHistory] = useState<any | null>(null);
+    const [billHistory, setBillHistory] = useState<RecurringBill | null>(null);
 
     // Payment Overrides
     const [payAmount, setPayAmount] = useState("");
@@ -306,14 +307,21 @@ export default function BillsPage() {
         }
     };
 
+    // --- REPAIRED FILTER ENGINE ---
+    // Respects the original code's data flow, ensuring paid bills are tracked via transactions or DB status.
     const filteredBills = useMemo(() => {
         return bills.filter(b => {
             const matchesSearch = b.name.toLowerCase().includes(searchTerm.toLowerCase());
-            // In a real app with status fields, implement status logic here. 
-            // Assuming ALL for now as recurring bills might not strictly hold "PAID/PENDING" state in DB directly
-            return matchesSearch;
+
+            // Allow DB status, OR check if it has a populated transactions array
+            const isPaid = b.status === "PAID" || (b.transactions && b.transactions.length > 0);
+            const matchesStatus = statusFilter === "ALL" ||
+                (statusFilter === "PAID" && isPaid) ||
+                (statusFilter === "PENDING" && !isPaid);
+
+            return matchesSearch && matchesStatus;
         }).sort((a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime());
-    }, [bills, searchTerm]);
+    }, [bills, searchTerm, statusFilter]);
 
     const accountOptions = accounts.map(a => ({
         label: parseAccountName(a.name),
@@ -383,6 +391,7 @@ export default function BillsPage() {
                         <div className="flex p-1.5 bg-white border border-slate-200/80 rounded-2xl shadow-sm w-full md:w-auto shrink-0">
                             <button onClick={() => setStatusFilter("PENDING")} className={`flex-1 px-8 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition-all ${statusFilter === "PENDING" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>Pending</button>
                             <button onClick={() => setStatusFilter("PAID")} className={`flex-1 px-8 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition-all ${statusFilter === "PAID" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>Settled</button>
+                            <button onClick={() => setStatusFilter("ALL")} className={`flex-1 px-8 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition-all ${statusFilter === "ALL" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>All</button>
                         </div>
                     </motion.div>
 
@@ -398,10 +407,10 @@ export default function BillsPage() {
                                 </div>
                             ) : (
                                 filteredBills.map((bill) => {
-                                    // Basic logic to determine if due soon. Refine based on business logic.
                                     const dueDate = new Date(bill.nextDueDate);
+                                    const isPaid = bill.status === "PAID" || (bill.transactions && bill.transactions.length > 0);
                                     const isDueSoon = dueDate.getTime() - new Date().getTime() < 7 * 24 * 60 * 60 * 1000;
-                                    const isOverdue = dueDate.getTime() < new Date().getTime();
+                                    const isOverdue = !isPaid && dueDate.getTime() < new Date().getTime();
 
                                     const acc = accounts.find(a => a.id === bill.accountId) || bill.account;
                                     const sourceAlias = parseAccountName(acc?.name || "");
@@ -410,12 +419,29 @@ export default function BillsPage() {
                                         <div key={bill.id} className="p-5 sm:p-6 hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-l-4 border-transparent hover:border-blue-500 group">
                                             <div className="flex items-center gap-4 min-w-0 flex-1 pl-1">
                                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm transition-transform group-hover:scale-105 
-                                                    ${isOverdue ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                                                    ${isPaid ? 'bg-slate-50 border-slate-200 text-slate-400' : isOverdue ? 'bg-rose-50 border-rose-100 text-rose-600' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
                                                     {getCategoryIcon(bill.category)}
                                                 </div>
                                                 <div className="min-w-0 flex-1">
-                                                    <p className={`text-base font-black truncate tracking-tight mb-1 text-slate-900`}>{bill.name}</p>
-                                                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 flex-wrap">
+                                                    <div className="flex justify-between items-start">
+                                                        <h3 className={`text-lg font-black tracking-tight truncate pr-4 ${isPaid ? 'text-slate-500' : 'text-slate-900'}`}>{bill.name}</h3>
+
+                                                        {/* Ledger History Dropdown Context Menu */}
+                                                        <div className="shrink-0">
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger className="p-1 rounded-lg hover:bg-slate-100 border border-transparent text-slate-400 hover:text-slate-900 transition-all focus:outline-none">
+                                                                    <MoreVertical className="w-5 h-5 font-bold" />
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end" className="bg-white border border-slate-200 w-48 p-2 rounded-2xl shadow-xl mt-2">
+                                                                    <DropdownMenuItem onClick={() => setBillHistory(bill)} className="flex items-center gap-3 font-bold text-sm text-slate-900 py-3 px-3 rounded-xl cursor-pointer hover:bg-slate-100 focus:bg-slate-100">
+                                                                        <ListCollapse className="w-4 h-4 font-bold" /> Ledger History
+                                                                    </DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 flex-wrap mt-1">
                                                         <span className="flex items-center gap-1.5">
                                                             <Calendar className="w-3.5 h-3.5" /> {new Date(bill.nextDueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                                                         </span>
@@ -424,11 +450,11 @@ export default function BillsPage() {
                                                         {/* UNBOXED BANK ICONS */}
                                                         <span className="flex items-center gap-1.5 text-slate-600 bg-slate-100/50 px-2 py-0.5 rounded-md">
                                                             {getAccountIconNode(acc, "w-3.5 h-3.5")}
-                                                            <span className="font-bold text-[11px] uppercase tracking-wider">{sourceAlias}</span>
+                                                            <span className="font-bold text-[11px] uppercase tracking-wider truncate max-w-[150px]">{sourceAlias}</span>
                                                         </span>
 
-                                                        <span className={`px-2 py-0.5 rounded-md font-mono text-[9px] uppercase tracking-wider font-black ml-2 ${isOverdue ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
-                                                            {isOverdue ? "Overdue" : "Pending"}
+                                                        <span className={`px-2 py-0.5 rounded-md font-mono text-[9px] uppercase tracking-wider font-black ml-2 ${isPaid ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : isOverdue ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
+                                                            {isPaid ? "Settled" : isOverdue ? "Overdue" : "Pending"}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -436,15 +462,17 @@ export default function BillsPage() {
 
                                             <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-0 pt-4 sm:pt-0 border-slate-100 pl-2 sm:pl-0 shrink-0">
                                                 <div className="text-left sm:text-right">
-                                                    <p className={`text-xl font-black font-mono tracking-tight text-slate-900`}>
+                                                    <p className={`text-xl font-black font-mono tracking-tight ${isPaid ? 'text-slate-400' : 'text-slate-900'}`}>
                                                         {formatINR(bill.amount)}
                                                     </p>
                                                 </div>
 
                                                 <div className="flex items-center gap-1">
-                                                    <button onClick={() => openPayModal(bill)} className="px-4 py-2 text-xs font-black uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm focus:outline-none">
-                                                        Execute
-                                                    </button>
+                                                    {!isPaid && (
+                                                        <button onClick={() => openPayModal(bill)} className="px-4 py-2 text-xs font-black uppercase tracking-wider text-blue-600 bg-blue-50 border border-blue-100 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm focus:outline-none">
+                                                            Execute
+                                                        </button>
+                                                    )}
                                                     <button onClick={() => handleEditClick(bill)} className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-xl transition-colors shadow-sm focus:outline-none">
                                                         <Pencil className="w-4 h-4 font-bold" strokeWidth={2.5} />
                                                     </button>
@@ -460,6 +488,55 @@ export default function BillsPage() {
                         </div>
                     </motion.div>
                 </main>
+
+                {/* --- RESTORED LEDGER HISTORY MODAL --- */}
+                <AnimatePresence>
+                    {billHistory && (
+                        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm" onClick={() => setBillHistory(null)} />
+                            <motion.div variants={modalVariants} initial="hidden" animate="visible" exit="exit" className="relative bg-white border border-slate-200 rounded-[2rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+
+                                <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Ledger History</h3>
+                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mt-1">{billHistory.name}</p>
+                                    </div>
+                                    <button onClick={() => setBillHistory(null)} className="p-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-400 hover:text-slate-900 rounded-full transition-colors shadow-sm"><X className="h-5 w-5 font-bold" /></button>
+                                </div>
+
+                                <div className="p-6 overflow-y-auto flex-1 bg-white">
+                                    {!billHistory.transactions || billHistory.transactions.length === 0 ? (
+                                        <div className="py-12 text-center flex flex-col items-center">
+                                            <Receipt className="w-10 h-10 text-slate-300 mb-4" />
+                                            <p className="text-sm font-bold text-slate-500">No payment history recorded.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {billHistory.transactions.map((tx: any) => (
+                                                <div key={tx.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex justify-between items-center">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="p-2 bg-white rounded-xl border border-slate-200 shadow-sm shrink-0">
+                                                            <CheckCircle2 className="w-4 h-4 text-slate-700 font-bold" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-black text-slate-900">Contract Settlement</p>
+                                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+                                                                {new Date(tx.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-base font-black font-mono text-slate-900">
+                                                        ₹{tx.amount.toLocaleString("en-IN", { minimumFractionDigits: 0 })}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
 
                 {/* --- GLASSMORPHISM DELETE MODAL --- */}
                 <AnimatePresence>
@@ -544,7 +621,7 @@ export default function BillsPage() {
                     )}
                 </AnimatePresence>
 
-                {/* --- THE FLAWLESS, BREAKOUT ESTABLISH MODAL --- */}
+                {/* --- ESTABLISH CONTRACT MODAL --- */}
                 <AnimatePresence>
                     {isFormOpen && (
                         <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
