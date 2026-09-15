@@ -8,6 +8,8 @@ import { LoansModule } from './loans/loans.module';
 import { AuthModule } from './auth/auth.module';
 import { RecurringBillsModule } from './recurring-bills/recurring-bills.module';
 import { TransferModule } from './transfer/transfer.module';
+import { TasksModule } from './tasks/tasks.module';
+import { CyclesModule } from './cycles/cycles.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { TransferModule } from './transfer/transfer.module';
     LoansModule,
     RecurringBillsModule,
     TransferModule,
+    TasksModule,
+    CyclesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

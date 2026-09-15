@@ -24,11 +24,15 @@ model User {
   lastName       String?
   role           Role            @default(USER)
 
-  // Relationships
+  // Financial Relationships (Existing)
   accounts       Account[]
   transactions   Transaction[]
   loans          Loan[]
   recurringBills RecurringBill[]
+
+  // Productivity & Personal Relationships (New)
+  tasks          Task[]
+  cycleLogs      CycleLog[]
 
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -52,9 +56,9 @@ model Account {
   type           AccountType     @default(BANK)
   
   // Account Details (Optional for CASH)
-  accountNumber  String?        
-  ifscCode       String?        
-  branch         String?        
+  accountNumber  String?         
+  ifscCode       String?         
+  branch         String?         
   
   currentBalance Float           @default(0)
   currency       String          @default("INR")
@@ -133,30 +137,30 @@ enum LoanDirection {
 }
 
 model Loan {
-  id             String          @id @default(uuid())
-  counterparty   String          // Bank name, friend's name, or business
+  id            String         @id @default(uuid())
+  counterparty  String         // Bank name, friend's name, or business
   
-  direction      LoanDirection   @default(BORROWED)
-  type           String          // 'PERSONAL', 'HOME', 'BUSINESS', 'GOLD'
+  direction     LoanDirection  @default(BORROWED)
+  type          String         // 'PERSONAL', 'HOME', 'BUSINESS', 'GOLD'
   
-  principal      Float          
-  monthlyRate    Float?          @default(0)
+  principal     Float          
+  monthlyRate   Float?         @default(0)
 
-  interestType   String          @default("SIMPLE") 
-  startDate      DateTime        @default(now())
-  status         String          @default("ACTIVE") // 'ACTIVE' or 'CLEARED'
-  clearedDate    DateTime?
-  dueDate        DateTime?       // Target Payoff Date
+  interestType  String         @default("SIMPLE") 
+  startDate     DateTime       @default(now())
+  status        String         @default("ACTIVE") // 'ACTIVE' or 'CLEARED'
+  clearedDate   DateTime?
+  dueDate       DateTime?      // Target Payoff Date
   
   // SaaS Tenant Link
-  userId         String
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Payment History
-  transactions   Transaction[]
+  transactions  Transaction[]
 
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 // ==========================================
@@ -173,27 +177,97 @@ enum RecurrenceInterval {
 }
 
 model RecurringBill {
-  id             String             @id @default(uuid())
-  name           String             // e.g., "Apartment Rent", "AWS Hosting"
-  amount         Float
-  category       String             
+  id          String             @id @default(uuid())
+  name        String             // e.g., "Apartment Rent", "AWS Hosting"
+  amount      Float
+  category    String             
   
-  interval       RecurrenceInterval @default(MONTHLY)
-  customDays     Int?               
+  interval    RecurrenceInterval @default(MONTHLY)
+  customDays  Int?               
   
-  nextDueDate    DateTime           
-  lastPaidDate   DateTime?          
-  status         String             @default("ACTIVE") 
+  nextDueDate DateTime           
+  lastPaidDate DateTime?         
+  status      String             @default("ACTIVE") 
 
-  accountId      String
-  account        Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  userId         String
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Payment History
-  transactions   Transaction[]
+  transactions Transaction[]
 
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+// ==========================================
+// 6. PLANNER & THINGS TO DO (NEW DOMAIN)
+// ==========================================
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  title       String
+  description String?
+  priority    TaskPriority @default(MEDIUM)
+  status      TaskStatus   @default(PENDING)
+  
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  // SaaS Tenant Link
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, dueDate])
+}
+
+// ==========================================
+// 7. PERSONAL TRACKER / CYCLE ENGINE (NEW DOMAIN)
+// ==========================================
+
+enum FlowIntensity {
+  SPOTTING
+  LIGHT
+  MEDIUM
+  HEAVY
+}
+
+model CycleLog {
+  id             String         @id @default(uuid())
+  startDate      DateTime       // Exact start date & time
+  endDate        DateTime?      // Exact end date & time when flow ceases
+  flow           FlowIntensity? @default(MEDIUM)
+  
+  // Symptoms & Custom Notes
+  symptoms       String[]       @default([]) // e.g. ["Cramps", "Headache", "Fatigue"]
+  notes          String?        // Personal journal / notes
+  
+  // SaaS Tenant Link
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([userId, startDate])
 }

@@ -19,7 +19,9 @@ import {
     Calculator,
     Menu,
     X,
-    ChevronDown
+    ChevronDown,
+    ListTodo,
+    CalendarHeart
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -71,7 +73,10 @@ export default function Navbar() {
         { name: "Ledger", path: "/transactions", icon: ReceiptText },
         { name: "Contracts", path: "/bills", icon: FileText },
         { name: "Matrix", path: "/loans", icon: Scale },
-        { name: "Calculators", path: "/calculator", icon: Calculator }, // <-- ADDED CALCULATOR HERE
+        { name: "Calculators", path: "/calculator", icon: Calculator },
+        // --- NEW MODULES ADDED HERE ---
+        { name: "Planner", path: "/planner", icon: ListTodo },
+        { name: "Tracker", path: "/tracker", icon: CalendarHeart },
     ];
 
     return (
@@ -87,26 +92,30 @@ export default function Navbar() {
                         FPMS
                     </Link>
 
-                    {/* Fluid Desktop Navigation */}
-                    <div className="hidden lg:flex items-center gap-1 relative">
+                    {/* Fluid Desktop Navigation (Scrollable horizontally on medium screens if it gets too tight) */}
+                    <div className="hidden lg:flex items-center gap-1 relative overflow-x-auto scrollbar-hide max-w-[60vw]">
                         {navLinks.map((link) => {
                             const isActive = pathname === link.path;
                             const Icon = link.icon;
+                            // Add a subtle color shift for the wellness modules
+                            const activeColorClass = (link.name === "Tracker" || link.name === "Planner") ? "text-pink-600" : "text-blue-700";
+                            const activeBgClass = (link.name === "Tracker" || link.name === "Planner") ? "bg-pink-50 border-pink-100" : "bg-blue-50 border-blue-100";
+                            const iconColorClass = isActive ? activeColorClass : "text-slate-400";
+
                             return (
                                 <Link
                                     key={link.path}
                                     href={link.path}
-                                    className={`relative flex items-center gap-2 px-4 py-2 text-sm font-bold transition-colors duration-300 z-10 ${isActive ? "text-blue-700" : "text-slate-500 hover:text-slate-800"
-                                        }`}
+                                    className={`relative flex items-center gap-2 px-3 xl:px-4 py-2 text-sm font-bold transition-colors duration-300 z-10 shrink-0 ${isActive ? activeColorClass : "text-slate-500 hover:text-slate-800"}`}
                                 >
                                     {isActive && (
                                         <motion.div
                                             layoutId="navbar-active-pill"
-                                            className="absolute inset-0 bg-blue-50 border border-blue-100 rounded-xl -z-10 shadow-sm"
+                                            className={`absolute inset-0 border rounded-xl -z-10 shadow-sm ${activeBgClass}`}
                                             transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                         />
                                     )}
-                                    <Icon className={`h-4 w-4 ${isActive ? "text-blue-600" : "text-slate-400"}`} strokeWidth={2.5} />
+                                    <Icon className={`h-4 w-4 ${iconColorClass}`} strokeWidth={2.5} />
                                     {link.name}
                                 </Link>
                             );
@@ -115,7 +124,7 @@ export default function Navbar() {
                 </div>
 
                 {/* Right Side: Profile & Mobile Toggle */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 shrink-0">
                     {loading ? (
                         <div className="h-10 w-32 bg-slate-100 animate-pulse rounded-full border border-slate-200"></div>
                     ) : (
@@ -189,30 +198,32 @@ export default function Navbar() {
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                         className="lg:hidden bg-white border-b border-slate-200 shadow-xl overflow-hidden"
                     >
-                        <div className="px-4 py-4 flex flex-col gap-2">
+                        <div className="px-4 py-4 flex flex-col gap-2 max-h-[70vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
                             {navLinks.map((link) => {
                                 const isActive = pathname === link.path;
                                 const Icon = link.icon;
+
+                                const isWellness = link.name === "Tracker" || link.name === "Planner";
+                                const activeBgClass = isWellness ? "bg-pink-50 text-pink-700 shadow-sm border border-pink-100" : "bg-blue-50 text-blue-700 shadow-sm border border-blue-100";
+                                const iconColorClass = isActive ? (isWellness ? "text-pink-600" : "text-blue-600") : "text-slate-400";
+
                                 return (
                                     <Link
                                         key={link.path}
                                         href={link.path}
                                         onClick={() => setIsMobileMenuOpen(false)}
-                                        className={`flex items-center gap-3 px-5 py-4 rounded-2xl text-sm font-extrabold transition-all ${isActive
-                                            ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-100"
-                                            : "text-slate-600 hover:bg-slate-50 border border-transparent"
-                                            }`}
+                                        className={`flex items-center gap-3 px-5 py-4 rounded-2xl text-sm font-extrabold transition-all shrink-0 ${isActive ? activeBgClass : "text-slate-600 hover:bg-slate-50 border border-transparent"}`}
                                     >
-                                        <Icon className={`h-5 w-5 ${isActive ? "text-blue-600" : "text-slate-400"}`} strokeWidth={2.5} />
+                                        <Icon className={`h-5 w-5 ${iconColorClass}`} strokeWidth={2.5} />
                                         {link.name}
                                     </Link>
                                 );
                             })}
 
-                            <div className="border-t border-slate-100 my-2"></div>
+                            <div className="border-t border-slate-100 my-2 shrink-0"></div>
 
                             {/* Mobile Profile & Signout */}
-                            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                            <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl shrink-0">
                                 <div className="flex flex-col min-w-0">
                                     <span className="text-sm font-black text-slate-900 capitalize truncate">{getDisplayName()}</span>
                                     <span className="text-[11px] font-bold text-slate-500 truncate mt-0.5">{user?.email}</span>
