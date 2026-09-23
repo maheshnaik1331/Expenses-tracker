@@ -12,7 +12,7 @@ import {
     Loader2, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft,
     Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase,
     Pencil, Trash2, Calendar, ShieldAlert, X, Repeat, ChevronDown, Check, Landmark, Banknote,
-    TrendingUp
+    TrendingUp, Clock, ArrowRight
 } from "lucide-react";
 
 // --- UTILITIES ---
@@ -34,7 +34,7 @@ const getCategoryIcon = (category: string, type: string, sizeClass = "w-5 h-5") 
     }
 };
 
-// --- ULTRA-PREMIUM INTERACTIVE DROPDOWN WITH ICONS & BALANCES ---
+// --- ULTRA-PREMIUM INTERACTIVE DROPDOWN ---
 const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -54,7 +54,7 @@ const PremiumDropdown = ({ value, options, onChange, icon: Icon, label }: any) =
             {label && <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">{label}</label>}
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full bg-white border border-slate-300 hover:border-blue-400 rounded-xl px-4 min-h-[56px] flex justify-between items-center transition-all shadow-sm focus-within:ring-4 focus-within:ring-blue-500/10 cursor-pointer"
+                className="w-full bg-white border border-slate-300 hover:border-blue-500 rounded-xl px-4 min-h-[56px] flex justify-between items-center transition-all shadow-sm focus-within:ring-4 focus-within:ring-blue-500/10 cursor-pointer"
             >
                 <div className="flex items-center gap-3 min-w-0 flex-1 py-2">
                     {selectedOption?.iconNode ? selectedOption.iconNode : (Icon && <Icon className="w-5 h-5 text-slate-400 font-bold shrink-0" />)}
@@ -133,6 +133,7 @@ export default function TransactionsPage() {
         category: EXPENSE_CATEGORIES[0],
         note: "",
         date: new Date().toISOString().split('T')[0],
+        time: new Date().toTimeString().slice(0, 5), // Silently preserves local time
         accountId: "",
         toAccountId: ""
     });
@@ -163,12 +164,14 @@ export default function TransactionsPage() {
     }, [user, loading]);
 
     const resetForm = () => {
+        const now = new Date();
         setForm({
             type: "EXPENSE",
             amount: "",
             category: EXPENSE_CATEGORIES[0],
             note: "",
-            date: new Date().toISOString().split('T')[0],
+            date: now.toISOString().split('T')[0],
+            time: now.toTimeString().slice(0, 5),
             accountId: accounts.length > 0 ? accounts[0].id : "",
             toAccountId: ""
         });
@@ -186,12 +189,14 @@ export default function TransactionsPage() {
 
     const handleEditClick = (tx: any, e: React.MouseEvent) => {
         e.stopPropagation();
+        const txDate = new Date(tx.date);
         setForm({
             type: tx.type,
             amount: tx.amount.toString(),
             category: tx.category,
             note: tx.note || "",
-            date: new Date(tx.date).toISOString().split('T')[0],
+            date: txDate.toLocaleDateString('en-CA'),
+            time: txDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
             accountId: tx.accountId,
             toAccountId: tx.toAccountId || ""
         });
@@ -204,7 +209,7 @@ export default function TransactionsPage() {
         try {
             setSubmitting(true);
             await api.delete(`/transactions/${txToDelete}`);
-            toast.success("Transaction Deleted from ledger.");
+            toast.success("Transaction erased from ledger.");
             fetchLedgerData();
         } catch (err) {
             toast.error("Failed to delete transaction.");
@@ -226,12 +231,18 @@ export default function TransactionsPage() {
 
         try {
             setSubmitting(true);
+
+            // FLAWLESS TIMEZONE BINDING
+            const [year, month, day] = form.date.split('-').map(Number);
+            const [hours, minutes] = form.time.split(':').map(Number);
+            const preciseDate = new Date(year, month - 1, day, hours, minutes).toISOString();
+
             const payload = {
                 type: form.type,
                 amount: parseFloat(cleanAmount),
                 category: form.category,
                 note: form.note,
-                date: new Date(form.date).toISOString(),
+                date: preciseDate,
                 accountId: form.accountId,
                 toAccountId: form.type === "TRANSFER" ? form.toAccountId : null
             };
@@ -255,38 +266,38 @@ export default function TransactionsPage() {
 
     const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const rawValue = e.target.value.replace(/,/g, "");
-        if (rawValue === "") {
-            setForm({ ...form, amount: "" });
-            return;
-        }
+        if (rawValue === "") return setForm({ ...form, amount: "" });
         const numericValue = Number(rawValue);
-        if (!isNaN(numericValue)) {
-            setForm({ ...form, amount: numericValue.toLocaleString("en-IN") });
-        }
+        if (!isNaN(numericValue)) setForm({ ...form, amount: numericValue.toLocaleString("en-IN") });
     };
 
     const filteredTransactions = useMemo(() => {
         const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
         const filtered = transactions.filter((tx) => {
             const txDate = new Date(tx.date);
+            const txTime = txDate.getTime();
+
             const matchesSearch = tx.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (tx.note && tx.note.toLowerCase().includes(searchTerm.toLowerCase()));
+
             const matchesType = typeFilter === "ALL" || tx.type === typeFilter;
 
             let matchesTime = true;
-            if (timeFilter === "THIS_MONTH") {
-                matchesTime = txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
-            } else if (timeFilter === "LAST_MONTH") {
+            if (timeFilter === "TODAY") matchesTime = txTime >= todayStart;
+            else if (timeFilter === "LAST_2_DAYS") matchesTime = txTime >= todayStart - (2 * 24 * 60 * 60 * 1000);
+            else if (timeFilter === "LAST_3_DAYS") matchesTime = txTime >= todayStart - (3 * 24 * 60 * 60 * 1000);
+            else if (timeFilter === "LAST_7_DAYS") matchesTime = txTime >= todayStart - (7 * 24 * 60 * 60 * 1000);
+            else if (timeFilter === "THIS_MONTH") matchesTime = txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
+            else if (timeFilter === "LAST_MONTH") {
                 const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
                 matchesTime = txDate.getMonth() === lastMonth.getMonth() && txDate.getFullYear() === lastMonth.getFullYear();
-            } else if (timeFilter === "THIS_YEAR") {
-                matchesTime = txDate.getFullYear() === now.getFullYear();
-            }
+            } else if (timeFilter === "THIS_YEAR") matchesTime = txDate.getFullYear() === now.getFullYear();
 
             return matchesSearch && matchesType && matchesTime;
         });
 
-        // FLAWLESS SORTING: Resolves millisecond ties perfectly
         return filtered.sort((a, b) => {
             const timeA = new Date(a.date).getTime();
             const timeB = new Date(b.date).getTime();
@@ -296,6 +307,50 @@ export default function TransactionsPage() {
             return createdB - createdA;
         });
     }, [transactions, searchTerm, typeFilter, timeFilter]);
+
+    const groupedTransactions = useMemo(() => {
+        const groups: { [key: string]: any[] } = {};
+        const now = new Date();
+        const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toDateString();
+        const yesterdayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toDateString();
+
+        filteredTransactions.forEach(tx => {
+            const txDate = new Date(tx.date);
+            const dateStr = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate()).toDateString();
+
+            let label = dateStr;
+            if (dateStr === todayStr) label = "Today";
+            else if (dateStr === yesterdayStr) label = "Yesterday";
+            else label = txDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+            if (!groups[label]) groups[label] = [];
+            groups[label].push(tx);
+        });
+
+        const runningBalances: { [accId: string]: number } = {};
+        accounts.forEach(a => { runningBalances[a.id] = a.currentBalance; });
+
+        Object.keys(groups).forEach(label => {
+            groups[label].forEach(tx => {
+                const accId = tx.accountId;
+                tx._balanceAfter = runningBalances[accId];
+
+                if (tx.type === 'EXPENSE') runningBalances[accId] += tx.amount;
+                if (tx.type === 'INCOME') runningBalances[accId] -= tx.amount;
+                if (tx.type === 'TRANSFER') {
+                    runningBalances[accId] += tx.amount;
+                    if (tx.toAccountId && runningBalances[tx.toAccountId] !== undefined) {
+                        tx._destBalanceAfter = runningBalances[tx.toAccountId];
+                        runningBalances[tx.toAccountId] -= tx.amount;
+                        tx._destBalanceBefore = runningBalances[tx.toAccountId];
+                    }
+                }
+                tx._balanceBefore = runningBalances[accId];
+            });
+        });
+
+        return groups;
+    }, [filteredTransactions, accounts]);
 
     const kpis = useMemo(() => {
         let income = 0; let expense = 0; let transferVol = 0;
@@ -314,16 +369,12 @@ export default function TransactionsPage() {
         exit: { opacity: 0, scale: 0.95, y: 20, transition: { duration: 0.2 } }
     };
 
-    // --- PARSING UTILITIES ---
     const parseAccountName = (nameStr: string) => nameStr.includes("::") ? nameStr.split("::")[1] : nameStr;
-
-    const getAccountIconNode = (acc: any, sizeClass = "w-5 h-5") => {
+    const getAccountIconNode = (acc: any, sizeClass = "w-7 h-7") => {
         if (!acc) return <Landmark className={`${sizeClass} text-slate-400`} />;
         const [parsedBankId] = acc.name.includes("::") ? acc.name.split("::") : [null];
         const bankConfig = parsedBankId ? INDIAN_BANK_DIRECTORY.find(b => b.id === parsedBankId) : null;
-        const isCash = acc.type === 'CASH';
-
-        if (isCash) return <Banknote className={`${sizeClass} text-emerald-600 font-bold`} />;
+        if (acc.type === 'CASH') return <Banknote className={`${sizeClass} text-emerald-600 font-bold`} />;
         if (bankConfig) return <img src={`https://img.logo.dev/${bankConfig.domain}?token=${process.env.NEXT_PUBLIC_LOGO_DEV_KEY}`} className={`${sizeClass} object-contain`} />;
         return <Landmark className={`${sizeClass} text-blue-600 font-bold`} />;
     };
@@ -336,6 +387,10 @@ export default function TransactionsPage() {
     ];
 
     const timeOptions = [
+        { label: "Today", value: "TODAY" },
+        { label: "Last 2 Days", value: "LAST_2_DAYS" },
+        { label: "Last 3 Days", value: "LAST_3_DAYS" },
+        { label: "Last 7 Days", value: "LAST_7_DAYS" },
         { label: "This Month", value: "THIS_MONTH" },
         { label: "Last Month", value: "LAST_MONTH" },
         { label: "This Year", value: "THIS_YEAR" },
@@ -444,22 +499,32 @@ export default function TransactionsPage() {
                             <div className="w-full sm:w-48">
                                 <PremiumDropdown value={typeFilter} options={typeOptions} onChange={setTypeFilter} icon={Filter} />
                             </div>
-                            <div className="w-full sm:w-48">
+                            <div className="w-full sm:w-56">
                                 <PremiumDropdown value={timeFilter} options={timeOptions} onChange={setTimeFilter} icon={Calendar} />
                             </div>
                         </div>
                     </motion.div>
 
-                    {/* --- MAIN LEDGER TABLE (ULTRA PREMIUM EXPANSION) --- */}
-                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="bg-white border border-slate-200/80 rounded-[2rem] shadow-sm">
-                        <div className="flex flex-col p-2 sm:p-4 gap-1">
+                    {/* --- EXPERT MASTER LEDGER TABLE --- */}
+                    <motion.div initial="hidden" animate="show" variants={fadeUp} className="bg-white border border-slate-200/80 rounded-[2rem] shadow-sm overflow-hidden pb-4">
+
+                        {Object.keys(groupedTransactions).length > 0 && (
+                            <div className="hidden lg:grid grid-cols-12 gap-4 px-8 py-4 bg-slate-50 border-b border-slate-200/60 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                <div className="col-span-4">Transaction Profile</div>
+                                <div className="col-span-2">Execution Time</div>
+                                <div className="col-span-4">Capital Allocation & Impact</div>
+                                <div className="col-span-2 text-right">Settlement Value</div>
+                            </div>
+                        )}
+
+                        <div className="flex flex-col">
                             {fetching ? (
                                 <div className="py-24 flex flex-col items-center justify-center">
                                     <Loader2 className="w-8 h-8 animate-spin text-blue-600 font-bold mb-4" strokeWidth={3} />
                                     <span className="text-xs font-bold text-slate-500 uppercase tracking-widest animate-pulse">Decrypting Ledger...</span>
                                 </div>
-                            ) : filteredTransactions.length === 0 ? (
-                                <div className="py-32 text-center flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl">
+                            ) : Object.keys(groupedTransactions).length === 0 ? (
+                                <div className="py-32 text-center flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl m-4">
                                     <div className="p-4 bg-white border border-slate-200 border-dashed rounded-2xl mb-4">
                                         <Receipt className="w-8 h-8 text-slate-300" strokeWidth={2} />
                                     </div>
@@ -467,130 +532,115 @@ export default function TransactionsPage() {
                                     <p className="text-slate-500 font-bold text-sm mt-1">Adjust your filters or log a new capital movement.</p>
                                 </div>
                             ) : (
-                                filteredTransactions.map((tx) => {
-                                    const isIncome = tx.type === "INCOME";
-                                    const isTransfer = tx.type === "TRANSFER";
-                                    const isExpanded = expandedTxId === tx.id;
+                                Object.keys(groupedTransactions).map((dateLabel) => (
+                                    <div key={dateLabel} className="flex flex-col">
 
-                                    const account = accounts.find(a => a.id === tx.accountId);
-                                    const toAccount = accounts.find(a => a.id === tx.toAccountId);
-                                    const destAcc = toAccount;
+                                        {/* Date Group Header */}
+                                        <div className="sticky top-16 lg:top-0 z-20 bg-slate-100/90 backdrop-blur-md px-6 lg:px-8 py-2.5 border-y border-slate-200/80 shadow-[0_4px_10px_rgb(0,0,0,0.02)] flex items-center gap-2">
+                                            <Calendar className="w-4 h-4 text-blue-600 font-bold" />
+                                            <h3 className="text-[11px] font-black text-slate-600 uppercase tracking-widest">
+                                                {dateLabel}
+                                            </h3>
+                                        </div>
 
-                                    const sourceAlias = parseAccountName(account?.name || "");
-                                    const destAlias = isTransfer ? parseAccountName(toAccount?.name || "") : null;
+                                        {/* Transactions under this Date */}
+                                        <div className="flex flex-col divide-y divide-slate-100">
+                                            {groupedTransactions[dateLabel].map((tx: any) => {
+                                                const isIncome = tx.type === "INCOME";
+                                                const isTransfer = tx.type === "TRANSFER";
+                                                const isExpanded = expandedTxId === tx.id;
 
-                                    return (
-                                        <div
-                                            key={tx.id}
-                                            // The "Card-Lift" Highlight effect for mobile/desktop
-                                            className={`group flex flex-col transition-all duration-300 ease-out border-b border-slate-100 last:border-0 overflow-hidden
-                                                ${isExpanded ? 'bg-white shadow-xl rounded-2xl my-3 border-transparent ring-4 ring-blue-500/10 z-10' : 'hover:bg-slate-50/80 rounded-xl'}`}
-                                        >
+                                                const account = accounts.find(a => a.id === tx.accountId);
+                                                const toAccount = accounts.find(a => a.id === tx.toAccountId);
 
-                                            {/* THE MAIN ROW */}
-                                            <div
-                                                onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
-                                                className={`p-4 sm:p-5 transition-colors flex items-center justify-between gap-3 sm:gap-4 cursor-pointer select-none ${isExpanded ? 'pb-4' : ''}`}
-                                            >
-                                                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 pl-1">
-                                                    <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-transform ${isExpanded ? 'scale-110 shadow-md' : 'group-hover:scale-105 border'} 
-                                                        ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
-                                                        {getCategoryIcon(tx.category, tx.type)}
-                                                    </div>
+                                                const sourceAlias = parseAccountName(account?.name || "");
+                                                const destAlias = isTransfer ? parseAccountName(toAccount?.name || "") : null;
 
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="text-base font-black text-slate-900 truncate tracking-tight mb-0.5 sm:mb-1">
-                                                            {tx.category}
-                                                        </p>
+                                                const timeString = new Date(tx.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
-                                                        {/* UNBOXED BANK ICONS & DATE ROW (Zero Overflow) */}
-                                                        <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-bold text-slate-500 flex-wrap">
-                                                            <span className="shrink-0">{new Date(tx.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
-                                                            <span className="text-slate-300 shrink-0">•</span>
+                                                return (
+                                                    <div key={tx.id} className="group grid grid-cols-1 lg:grid-cols-12 gap-y-4 lg:gap-x-4 px-6 lg:px-8 py-6 hover:bg-slate-50/80 transition-colors items-center border-l-4 border-transparent hover:border-blue-500 relative">
 
-                                                            <div className="flex items-center gap-1.5 text-slate-600 min-w-0">
-                                                                <div className="shrink-0">{getAccountIconNode(account, "w-3.5 h-3.5")}</div>
-                                                                <span className="font-bold uppercase tracking-wider truncate max-w-[90px] sm:max-w-[150px]">{sourceAlias}</span>
-                                                            </div>
-
-                                                            {isTransfer && toAccount && (
-                                                                <>
-                                                                    <ArrowRightLeft className="w-3 h-3 text-slate-400 shrink-0 mx-0.5" />
-                                                                    <div className="flex items-center gap-1.5 text-slate-600 min-w-0">
-                                                                        <div className="shrink-0">{getAccountIconNode(toAccount, "w-3.5 h-3.5")}</div>
-                                                                        <span className="font-bold uppercase tracking-wider truncate max-w-[90px] sm:max-w-[150px]">{destAlias}</span>
-                                                                    </div>
-                                                                </>
-                                                            )}
+                                                        <div className="absolute top-4 right-4 lg:top-1/2 lg:-translate-y-1/2 flex items-center gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm p-1 rounded-xl shadow-sm border border-slate-200">
+                                                            <button onClick={(e) => handleEditClick(tx, e)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none"><Pencil className="w-3.5 h-3.5 font-bold" strokeWidth={2.5} /></button>
+                                                            <button onClick={() => setTxToDelete(tx.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors focus:outline-none"><Trash2 className="w-3.5 h-3.5 font-bold" strokeWidth={2.5} /></button>
                                                         </div>
-                                                    </div>
-                                                </div>
 
-                                                <div className="text-right shrink-0 pr-1 sm:pr-2">
-                                                    <p className={`text-base sm:text-xl font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
-                                                        {isIncome ? "+" : isTransfer ? "⇄" : "-"}{formatINR(tx.amount)}
-                                                    </p>
-                                                </div>
-                                            </div>
+                                                        {/* Col 1: Profile */}
+                                                        <div className="col-span-1 lg:col-span-4 flex items-start gap-4 min-w-0">
+                                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm transition-transform group-hover:scale-105 
+                                                                ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
+                                                                {getCategoryIcon(tx.category, tx.type)}
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-base font-black text-slate-900 truncate tracking-tight">{tx.category}</p>
+                                                                <p className="text-xs font-bold text-slate-500 truncate mt-0.5">{tx.note || (isTransfer ? "Internal Transfer" : "No description")}</p>
+                                                                <div className="lg:hidden flex items-center gap-1 mt-2">
+                                                                    <span className="inline-flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md text-[10px] font-black text-slate-500 uppercase tracking-widest"><Clock className="w-3 h-3" /> {timeString}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
 
-                                            {/* THE EXPANDED RECEIPT VIEW (Tear-off Style) */}
-                                            <AnimatePresence>
-                                                {isExpanded && (
-                                                    <motion.div
-                                                        initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
-                                                        className="bg-slate-50/50 border-t border-slate-200 border-dashed mx-4 sm:mx-6"
-                                                    >
-                                                        <div className="py-5 sm:pl-[4.5rem] flex flex-col md:flex-row justify-between gap-6" onClick={(e) => e.stopPropagation()}>
+                                                        {/* Col 2: Execution Time */}
+                                                        <div className="hidden lg:flex col-span-2 items-center">
+                                                            <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-100 px-2.5 py-1.5 rounded-md text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                                                                <Clock className="w-3.5 h-3.5 text-slate-400" /> {timeString}
+                                                            </span>
+                                                        </div>
 
-                                                            <div className="space-y-4 flex-1 min-w-0">
-                                                                {tx.note && (
-                                                                    <div className="flex items-start gap-3 sm:gap-4">
-                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-14 sm:w-16 pt-0.5 shrink-0">Notes</span>
-                                                                        <span className="text-sm font-bold text-slate-700 leading-relaxed break-words whitespace-normal w-full">{tx.note}</span>
-                                                                    </div>
-                                                                )}
-
-                                                                <div className="flex items-center gap-3 sm:gap-4">
-                                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-14 sm:w-16 shrink-0">Balance</span>
-                                                                    <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                                                        {getAccountIconNode(account, "w-4 h-4 shrink-0")}
-                                                                        <span className="text-sm font-black text-slate-900 truncate max-w-[120px] sm:max-w-[200px]">{sourceAlias}</span>
-                                                                        <span className="text-[11px] sm:text-xs font-mono font-black text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm shrink-0">
-                                                                            Left: {formatINR(account?.currentBalance || 0)}
+                                                        {/* Col 3: Capital Allocation & Impact */}
+                                                        <div className="col-span-1 lg:col-span-4 flex flex-col gap-3 min-w-0 pr-12 lg:pr-0">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="shrink-0 p-1.5 bg-slate-50 border border-slate-100 rounded-xl shadow-sm">
+                                                                    {getAccountIconNode(account, "w-6 h-6")}
+                                                                </div>
+                                                                <div className="min-w-0 flex-1 flex flex-col justify-center">
+                                                                    <p className="text-sm font-black text-slate-900 truncate">{sourceAlias}</p>
+                                                                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-mono font-bold text-slate-500">
+                                                                        <span className="opacity-80">{formatINR(tx._balanceBefore)}</span>
+                                                                        <ArrowRight className="w-3 h-3 text-slate-300 shrink-0" />
+                                                                        <span className={`px-1.5 py-0.5 rounded-md border ${isIncome ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : 'text-blue-700 bg-blue-50 border-blue-100'}`}>
+                                                                            {formatINR(tx._balanceAfter)}
                                                                         </span>
                                                                     </div>
                                                                 </div>
+                                                            </div>
 
-                                                                {isTransfer && toAccount && (
-                                                                    <div className="flex items-center gap-3 sm:gap-4">
-                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest w-14 sm:w-16 shrink-0">Dest Bal</span>
-                                                                        <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                                                            {getAccountIconNode(toAccount, "w-4 h-4 shrink-0")}
-                                                                            <span className="text-sm font-black text-slate-900 truncate max-w-[120px] sm:max-w-[200px]">{destAlias}</span>
-                                                                            <span className="text-[11px] sm:text-xs font-mono font-black text-slate-600 bg-white border border-slate-200 px-2 py-1 rounded-md shadow-sm shrink-0">
-                                                                                Left: {formatINR(toAccount.currentBalance || 0)}
+                                                            {isTransfer && toAccount && (
+                                                                <div className="flex items-center gap-3 relative mt-1">
+                                                                    <div className="absolute -top-3 left-4 bg-white text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 z-10">To</div>
+                                                                    <div className="shrink-0 p-1.5 bg-slate-50 border border-slate-100 rounded-xl shadow-sm relative">
+                                                                        {getAccountIconNode(toAccount, "w-6 h-6")}
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1 flex flex-col justify-center">
+                                                                        <p className="text-sm font-black text-slate-900 truncate">{destAlias}</p>
+                                                                        <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-mono font-bold text-slate-500">
+                                                                            <span className="opacity-80">{formatINR(tx._destBalanceBefore)}</span>
+                                                                            <ArrowRight className="w-3 h-3 text-slate-300 shrink-0" />
+                                                                            <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">
+                                                                                {formatINR(tx._destBalanceAfter)}
                                                                             </span>
                                                                         </div>
                                                                     </div>
-                                                                )}
-                                                            </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
 
-                                                            {/* Mobile-Optimized Grid Buttons */}
-                                                            <div className="grid grid-cols-2 md:flex md:flex-col justify-end gap-3 shrink-0 border-t md:border-t-0 md:border-l border-slate-200 border-dashed pt-4 md:pt-0 md:pl-6">
-                                                                <button onClick={(e) => handleEditClick(tx, e)} className="flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm font-black text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors shadow-sm focus:outline-none">
-                                                                    <Pencil className="w-4 h-4" strokeWidth={2.5} /> Edit
-                                                                </button>
-                                                                <button onClick={() => setTxToDelete(tx.id)} className="flex items-center justify-center gap-2 px-4 py-3 md:py-2.5 text-sm font-black text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors shadow-sm focus:outline-none">
-                                                                    <Trash2 className="w-4 h-4" strokeWidth={2.5} /> Delete
-                                                                </button>
+                                                        {/* Col 4: Settlement Value */}
+                                                        <div className="col-span-1 lg:col-span-2 flex items-center lg:justify-end border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-100 mt-2 lg:mt-0">
+                                                            <div className="text-left lg:text-right">
+                                                                <p className={`text-xl sm:text-2xl font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
+                                                                    {isIncome ? "+" : isTransfer ? "⇄" : "-"}{formatINR(tx.amount)}
+                                                                </p>
                                                             </div>
                                                         </div>
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
+
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                    )
-                                })
+                                    </div>
+                                ))
                             )}
                         </div>
                     </motion.div>
@@ -604,12 +654,12 @@ export default function TransactionsPage() {
                                     <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-6 border border-rose-100">
                                         <ShieldAlert className="w-6 h-6 text-rose-600 font-bold" strokeWidth={2.5} />
                                     </div>
-                                    <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Delete Transaction?</h3>
+                                    <h3 className="text-xl font-black text-slate-900 mb-2 tracking-tight">Purge Transaction?</h3>
                                     <p className="text-sm font-bold text-slate-500 mb-8 leading-relaxed">This will erase the record and mathematically reverse its impact on your associated account balances. Proceed?</p>
                                     <div className="flex gap-3">
                                         <button onClick={() => setTxToDelete(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-900 text-sm font-black py-3.5 rounded-xl transition-colors">Cancel</button>
                                         <button onClick={confirmDeletion} disabled={submitting} className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-sm font-black py-3.5 rounded-xl flex justify-center items-center shadow-md shadow-rose-600/20">
-                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Delete"}
+                                            {submitting ? <Loader2 className="w-4 h-4 animate-spin font-bold" /> : "Confirm Purge"}
                                         </button>
                                     </div>
                                 </motion.div>
@@ -643,11 +693,7 @@ export default function TransactionsPage() {
                                                     <div>
                                                         <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Amount (₹)</label>
                                                         <input
-                                                            type="text"
-                                                            inputMode="numeric"
-                                                            required
-                                                            value={form.amount}
-                                                            onChange={handleAmountChange}
+                                                            type="text" inputMode="numeric" required value={form.amount} onChange={handleAmountChange}
                                                             className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3.5 text-base font-black font-mono text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none placeholder:text-slate-300"
                                                             placeholder="0"
                                                         />
@@ -657,10 +703,7 @@ export default function TransactionsPage() {
                                                         <div className="relative w-full">
                                                             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
                                                             <input
-                                                                type="date"
-                                                                required
-                                                                value={form.date}
-                                                                onChange={(e) => setForm({ ...form, date: e.target.value })}
+                                                                type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
                                                                 className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none modern-date-input cursor-pointer"
                                                             />
                                                         </div>
