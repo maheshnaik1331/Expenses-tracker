@@ -121,7 +121,6 @@ export default function TransactionsPage() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [txToDelete, setTxToDelete] = useState<string | null>(null);
-    const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [typeFilter, setTypeFilter] = useState("ALL");
@@ -133,7 +132,7 @@ export default function TransactionsPage() {
         category: EXPENSE_CATEGORIES[0],
         note: "",
         date: new Date().toISOString().split('T')[0],
-        time: new Date().toTimeString().slice(0, 5), // Silently preserves local time
+        time: new Date().toTimeString().slice(0, 5),
         accountId: "",
         toAccountId: ""
     });
@@ -216,7 +215,6 @@ export default function TransactionsPage() {
         } finally {
             setSubmitting(false);
             setTxToDelete(null);
-            setExpandedTxId(null);
         }
     };
 
@@ -271,6 +269,7 @@ export default function TransactionsPage() {
         if (!isNaN(numericValue)) setForm({ ...form, amount: numericValue.toLocaleString("en-IN") });
     };
 
+    // --- DYNAMIC FILTERING & FLAWLESS LOG-ORDER SORTING ENGINE ---
     const filteredTransactions = useMemo(() => {
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -308,30 +307,39 @@ export default function TransactionsPage() {
         });
     }, [transactions, searchTerm, typeFilter, timeFilter]);
 
+    // --- STRICT ARRAY-BASED DAY GROUPING & SIMULATED RUNNING BALANCES ---
     const groupedTransactions = useMemo(() => {
-        const groups: { [key: string]: any[] } = {};
+        const groups: { label: string, timestamp: number, transactions: any[] }[] = [];
         const now = new Date();
-        const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toDateString();
-        const yesterdayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toDateString();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const yesterdayStart = todayStart - 86400000;
 
         filteredTransactions.forEach(tx => {
             const txDate = new Date(tx.date);
-            const dateStr = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate()).toDateString();
+            const dayStart = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate()).getTime();
 
-            let label = dateStr;
-            if (dateStr === todayStr) label = "Today";
-            else if (dateStr === yesterdayStr) label = "Yesterday";
+            let label = "";
+            if (dayStart === todayStart) label = "Today";
+            else if (dayStart === yesterdayStart) label = "Yesterday";
             else label = txDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-            if (!groups[label]) groups[label] = [];
-            groups[label].push(tx);
+            let group = groups.find(g => g.timestamp === dayStart);
+            if (!group) {
+                group = { label, timestamp: dayStart, transactions: [] };
+                groups.push(group);
+            }
+            group.transactions.push(tx);
         });
 
+        // Ensure groups are strictly sorted by timestamp descending (Newest day first)
+        groups.sort((a, b) => b.timestamp - a.timestamp);
+
+        // Track Running Balances backwards
         const runningBalances: { [accId: string]: number } = {};
         accounts.forEach(a => { runningBalances[a.id] = a.currentBalance; });
 
-        Object.keys(groups).forEach(label => {
-            groups[label].forEach(tx => {
+        groups.forEach(group => {
+            group.transactions.forEach(tx => {
                 const accId = tx.accountId;
                 tx._balanceAfter = runningBalances[accId];
 
@@ -426,7 +434,8 @@ export default function TransactionsPage() {
 
                 <style dangerouslySetInnerHTML={{
                     __html: `
-        .modern-date-input::-webkit-calendar-picker-indicator {
+        .modern-date-input::-webkit-calendar-picker-indicator,
+        .modern-time-input::-webkit-calendar-picker-indicator {
           background: transparent; bottom: 0; color: transparent; cursor: pointer;
           height: auto; left: 0; position: absolute; right: 0; top: 0; width: auto;
         }
@@ -505,10 +514,10 @@ export default function TransactionsPage() {
                         </div>
                     </motion.div>
 
-                    {/* --- EXPERT MASTER LEDGER TABLE --- */}
+                    {/* --- EXPERT MASTER LEDGER TABLE (FLUID MOBILE-FIRST DESIGN) --- */}
                     <motion.div initial="hidden" animate="show" variants={fadeUp} className="bg-white border border-slate-200/80 rounded-[2rem] shadow-sm overflow-hidden pb-4">
 
-                        {Object.keys(groupedTransactions).length > 0 && (
+                        {groupedTransactions.length > 0 && (
                             <div className="hidden lg:grid grid-cols-12 gap-4 px-8 py-4 bg-slate-50 border-b border-slate-200/60 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                 <div className="col-span-4">Transaction Profile</div>
                                 <div className="col-span-2">Execution Time</div>
@@ -523,7 +532,7 @@ export default function TransactionsPage() {
                                     <Loader2 className="w-8 h-8 animate-spin text-blue-600 font-bold mb-4" strokeWidth={3} />
                                     <span className="text-xs font-bold text-slate-500 uppercase tracking-widest animate-pulse">Decrypting Ledger...</span>
                                 </div>
-                            ) : Object.keys(groupedTransactions).length === 0 ? (
+                            ) : groupedTransactions.length === 0 ? (
                                 <div className="py-32 text-center flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl m-4">
                                     <div className="p-4 bg-white border border-slate-200 border-dashed rounded-2xl mb-4">
                                         <Receipt className="w-8 h-8 text-slate-300" strokeWidth={2} />
@@ -532,23 +541,22 @@ export default function TransactionsPage() {
                                     <p className="text-slate-500 font-bold text-sm mt-1">Adjust your filters or log a new capital movement.</p>
                                 </div>
                             ) : (
-                                Object.keys(groupedTransactions).map((dateLabel) => (
-                                    <div key={dateLabel} className="flex flex-col">
+                                groupedTransactions.map((group) => (
+                                    <div key={group.timestamp} className="flex flex-col">
 
                                         {/* Date Group Header */}
-                                        <div className="sticky top-16 lg:top-0 z-20 bg-slate-100/90 backdrop-blur-md px-6 lg:px-8 py-2.5 border-y border-slate-200/80 shadow-[0_4px_10px_rgb(0,0,0,0.02)] flex items-center gap-2">
+                                        <div className="sticky top-16 lg:top-0 z-20 bg-slate-100/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-2.5 border-y border-slate-200/80 shadow-[0_4px_10px_rgb(0,0,0,0.02)] flex items-center gap-2">
                                             <Calendar className="w-4 h-4 text-blue-600 font-bold" />
                                             <h3 className="text-[11px] font-black text-slate-600 uppercase tracking-widest">
-                                                {dateLabel}
+                                                {group.label}
                                             </h3>
                                         </div>
 
                                         {/* Transactions under this Date */}
-                                        <div className="flex flex-col divide-y divide-slate-100">
-                                            {groupedTransactions[dateLabel].map((tx: any) => {
+                                        <div className="flex flex-col">
+                                            {group.transactions.map((tx: any) => {
                                                 const isIncome = tx.type === "INCOME";
                                                 const isTransfer = tx.type === "TRANSFER";
-                                                const isExpanded = expandedTxId === tx.id;
 
                                                 const account = accounts.find(a => a.id === tx.accountId);
                                                 const toAccount = accounts.find(a => a.id === tx.toAccountId);
@@ -559,46 +567,53 @@ export default function TransactionsPage() {
                                                 const timeString = new Date(tx.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
                                                 return (
-                                                    <div key={tx.id} className="group grid grid-cols-1 lg:grid-cols-12 gap-y-4 lg:gap-x-4 px-6 lg:px-8 py-6 hover:bg-slate-50/80 transition-colors items-center border-l-4 border-transparent hover:border-blue-500 relative">
+                                                    <div key={tx.id} className="group flex flex-col lg:grid lg:grid-cols-12 lg:items-center gap-y-3 lg:gap-x-4 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 hover:bg-slate-50/80 transition-colors border-b border-slate-100 last:border-0 border-l-4 border-transparent hover:border-blue-500 relative">
 
-                                                        <div className="absolute top-4 right-4 lg:top-1/2 lg:-translate-y-1/2 flex items-center gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm p-1 rounded-xl shadow-sm border border-slate-200">
-                                                            <button onClick={(e) => handleEditClick(tx, e)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none"><Pencil className="w-3.5 h-3.5 font-bold" strokeWidth={2.5} /></button>
-                                                            <button onClick={() => setTxToDelete(tx.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors focus:outline-none"><Trash2 className="w-3.5 h-3.5 font-bold" strokeWidth={2.5} /></button>
+                                                        {/* Mobile Actions (Absolute) / Desktop Actions (Absolute on Hover) */}
+                                                        <div className="absolute top-4 right-4 lg:top-1/2 lg:-translate-y-1/2 flex items-center gap-1 lg:opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm p-1 rounded-xl lg:shadow-sm lg:border lg:border-slate-200 z-10">
+                                                            <button onClick={(e) => handleEditClick(tx, e)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors focus:outline-none"><Pencil className="w-3.5 h-3.5 font-bold" strokeWidth={2.5} /></button>
+                                                            <button onClick={() => setTxToDelete(tx.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors focus:outline-none"><Trash2 className="w-3.5 h-3.5 font-bold" strokeWidth={2.5} /></button>
                                                         </div>
 
-                                                        {/* Col 1: Profile */}
-                                                        <div className="col-span-1 lg:col-span-4 flex items-start gap-4 min-w-0">
-                                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border shadow-sm transition-transform group-hover:scale-105 
-                                                                ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
-                                                                {getCategoryIcon(tx.category, tx.type)}
-                                                            </div>
-                                                            <div className="min-w-0 flex-1">
-                                                                <p className="text-base font-black text-slate-900 truncate tracking-tight">{tx.category}</p>
-                                                                <p className="text-xs font-bold text-slate-500 truncate mt-0.5">{tx.note || (isTransfer ? "Internal Transfer" : "No description")}</p>
-                                                                <div className="lg:hidden flex items-center gap-1 mt-2">
-                                                                    <span className="inline-flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md text-[10px] font-black text-slate-500 uppercase tracking-widest"><Clock className="w-3 h-3" /> {timeString}</span>
+                                                        {/* 1. Profile & Mobile Amount */}
+                                                        <div className="lg:col-span-4 flex items-start justify-between lg:justify-start gap-3 sm:gap-4 min-w-0 pr-16 lg:pr-0">
+                                                            <div className="flex items-start gap-3 sm:gap-4 min-w-0 flex-1">
+                                                                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 border shadow-sm transition-transform group-hover:scale-105 
+                                                                    ${isIncome ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : isTransfer ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
+                                                                    {getCategoryIcon(tx.category, tx.type, "w-4 h-4 sm:w-5 sm:h-5")}
+                                                                </div>
+                                                                <div className="min-w-0 flex-1 pt-0.5 sm:pt-1">
+                                                                    <p className="text-sm sm:text-base font-black text-slate-900 truncate tracking-tight">{tx.category}</p>
+                                                                    <p className="text-[11px] sm:text-xs font-bold text-slate-500 truncate mt-0.5">{tx.note || (isTransfer ? "Internal Transfer" : "No description")}</p>
                                                                 </div>
                                                             </div>
+                                                            {/* Mobile Amount */}
+                                                            <div className="lg:hidden shrink-0 pt-0.5 text-right">
+                                                                <p className={`text-sm sm:text-base font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
+                                                                    {isIncome ? "+" : isTransfer ? "⇄" : "-"}{formatINR(tx.amount)}
+                                                                </p>
+                                                            </div>
                                                         </div>
 
-                                                        {/* Col 2: Execution Time */}
-                                                        <div className="hidden lg:flex col-span-2 items-center">
-                                                            <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-100 px-2.5 py-1.5 rounded-md text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                                                        {/* 2. Execution Time (Desktop Only) */}
+                                                        <div className="hidden lg:flex lg:col-span-2 items-center">
+                                                            <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-slate-500 uppercase tracking-widest">
                                                                 <Clock className="w-3.5 h-3.5 text-slate-400" /> {timeString}
                                                             </span>
                                                         </div>
 
-                                                        {/* Col 3: Capital Allocation & Impact */}
-                                                        <div className="col-span-1 lg:col-span-4 flex flex-col gap-3 min-w-0 pr-12 lg:pr-0">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="shrink-0 p-1.5 bg-slate-50 border border-slate-100 rounded-xl shadow-sm">
-                                                                    {getAccountIconNode(account, "w-6 h-6")}
+                                                        {/* 3. Capital Allocation & Impact (Mobile: Indented under category) */}
+                                                        <div className="lg:col-span-4 flex flex-col gap-2 min-w-0 pl-[52px] sm:pl-[64px] lg:pl-0">
+                                                            {/* Source Account Impact */}
+                                                            <div className="flex items-center gap-2.5 bg-slate-50/50 lg:bg-transparent p-2 lg:p-0 rounded-lg lg:rounded-none border border-slate-100 lg:border-none">
+                                                                <div className="shrink-0 bg-white p-1 rounded-md border border-slate-100 lg:border-none lg:bg-transparent lg:p-0">
+                                                                    {getAccountIconNode(account, "w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6")}
                                                                 </div>
-                                                                <div className="min-w-0 flex-1 flex flex-col justify-center">
-                                                                    <p className="text-sm font-black text-slate-900 truncate">{sourceAlias}</p>
-                                                                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-mono font-bold text-slate-500">
-                                                                        <span className="opacity-80">{formatINR(tx._balanceBefore)}</span>
-                                                                        <ArrowRight className="w-3 h-3 text-slate-300 shrink-0" />
+                                                                <div className="min-w-0 flex-1 flex flex-col lg:flex-row lg:items-center lg:gap-3">
+                                                                    <p className="text-[11px] sm:text-sm font-black text-slate-900 truncate">{sourceAlias}</p>
+                                                                    <div className="flex items-center gap-1 mt-0.5 lg:mt-0 text-[10px] font-mono font-bold text-slate-500 flex-wrap">
+                                                                        <span className="opacity-70">{formatINR(tx._balanceBefore)}</span>
+                                                                        <ArrowRight className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-slate-300 shrink-0" />
                                                                         <span className={`px-1.5 py-0.5 rounded-md border ${isIncome ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : 'text-blue-700 bg-blue-50 border-blue-100'}`}>
                                                                             {formatINR(tx._balanceAfter)}
                                                                         </span>
@@ -606,17 +621,18 @@ export default function TransactionsPage() {
                                                                 </div>
                                                             </div>
 
+                                                            {/* Destination Account Impact (If Transfer) */}
                                                             {isTransfer && toAccount && (
-                                                                <div className="flex items-center gap-3 relative mt-1">
-                                                                    <div className="absolute -top-3 left-4 bg-white text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 z-10">To</div>
-                                                                    <div className="shrink-0 p-1.5 bg-slate-50 border border-slate-100 rounded-xl shadow-sm relative">
-                                                                        {getAccountIconNode(toAccount, "w-6 h-6")}
+                                                                <div className="flex items-center gap-2.5 bg-slate-50/50 lg:bg-transparent p-2 lg:p-0 rounded-lg lg:rounded-none border border-slate-100 lg:border-none relative mt-1 lg:mt-2">
+                                                                    <div className="absolute -top-2 left-4 bg-white text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 z-10 hidden lg:block">To</div>
+                                                                    <div className="shrink-0 bg-white p-1 rounded-md border border-slate-100 lg:border-none lg:bg-transparent lg:p-0">
+                                                                        {getAccountIconNode(toAccount, "w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6")}
                                                                     </div>
-                                                                    <div className="min-w-0 flex-1 flex flex-col justify-center">
-                                                                        <p className="text-sm font-black text-slate-900 truncate">{destAlias}</p>
-                                                                        <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-mono font-bold text-slate-500">
-                                                                            <span className="opacity-80">{formatINR(tx._destBalanceBefore)}</span>
-                                                                            <ArrowRight className="w-3 h-3 text-slate-300 shrink-0" />
+                                                                    <div className="min-w-0 flex-1 flex flex-col lg:flex-row lg:items-center lg:gap-3">
+                                                                        <p className="text-[11px] sm:text-sm font-black text-slate-900 truncate">{destAlias}</p>
+                                                                        <div className="flex items-center gap-1 mt-0.5 lg:mt-0 text-[10px] font-mono font-bold text-slate-500 flex-wrap">
+                                                                            <span className="opacity-70">{formatINR(tx._destBalanceBefore)}</span>
+                                                                            <ArrowRight className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-slate-300 shrink-0" />
                                                                             <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">
                                                                                 {formatINR(tx._destBalanceAfter)}
                                                                             </span>
@@ -626,9 +642,14 @@ export default function TransactionsPage() {
                                                             )}
                                                         </div>
 
-                                                        {/* Col 4: Settlement Value */}
-                                                        <div className="col-span-1 lg:col-span-2 flex items-center lg:justify-end border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-100 mt-2 lg:mt-0">
-                                                            <div className="text-left lg:text-right">
+                                                        {/* 4. Desktop Amount & Mobile Time */}
+                                                        <div className="lg:col-span-2 flex items-center justify-between lg:justify-end border-t border-slate-100 lg:border-none pt-3 lg:pt-0 mt-1 lg:mt-0 pl-[52px] sm:pl-[64px] lg:pl-0">
+                                                            {/* Mobile Time */}
+                                                            <div className="lg:hidden flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                                <Clock className="w-3 h-3" /> {timeString}
+                                                            </div>
+                                                            {/* Desktop Amount */}
+                                                            <div className="hidden lg:block text-right">
                                                                 <p className={`text-xl sm:text-2xl font-black font-mono tracking-tight ${isIncome ? 'text-emerald-600' : isTransfer ? 'text-indigo-600' : 'text-slate-900'}`}>
                                                                     {isIncome ? "+" : isTransfer ? "⇄" : "-"}{formatINR(tx.amount)}
                                                                 </p>
@@ -689,8 +710,8 @@ export default function TransactionsPage() {
                                                     <button type="button" onClick={() => handleTypeChange("TRANSFER")} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wider rounded-lg transition-all ${form.type === "TRANSFER" ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-900"}`}>Transfer</button>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                                    <div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                                                    <div className="sm:col-span-1">
                                                         <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Amount (₹)</label>
                                                         <input
                                                             type="text" inputMode="numeric" required value={form.amount} onChange={handleAmountChange}
@@ -698,13 +719,23 @@ export default function TransactionsPage() {
                                                             placeholder="0"
                                                         />
                                                     </div>
-                                                    <div>
+                                                    <div className="sm:col-span-1">
                                                         <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Date</label>
                                                         <div className="relative w-full">
                                                             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
                                                             <input
                                                                 type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
                                                                 className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none modern-date-input cursor-pointer"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="sm:col-span-1">
+                                                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Time</label>
+                                                        <div className="relative w-full">
+                                                            <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
+                                                            <input
+                                                                type="time" required value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })}
+                                                                className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none modern-time-input cursor-pointer"
                                                             />
                                                         </div>
                                                     </div>
