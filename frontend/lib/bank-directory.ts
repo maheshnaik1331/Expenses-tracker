@@ -28,7 +28,7 @@ export const INDIAN_BANK_DIRECTORY: BankItem[] = [
     { id: "cub", name: "City Union Bank Limited", domain: "cityunionbank.com", category: "PRIVATE" },
     { id: "dcb", name: "DCB Bank Limited", domain: "dcbbank.com", category: "PRIVATE" },
     { id: "dhanlaxmi", name: "Dhanlaxmi Bank Limited", domain: "dhanbank.com", category: "PRIVATE" },
-    { id: "federal", name: "Federal Bank Limited", domain: "federalbank.co.in", category: "PRIVATE" },
+    { id: "federal", name: "Federal Bank Limited", domain: "federal.bank.in", category: "PRIVATE" },
     { id: "hdfc", name: "HDFC Bank Limited", domain: "hdfc.bank.in", category: "PRIVATE" },
     { id: "icici", name: "ICICI Bank Limited", domain: "icicibank.com", category: "PRIVATE" },
     { id: "indusind", name: "IndusInd Bank Limited", domain: "indusind.com", category: "PRIVATE" },
