@@ -155,7 +155,7 @@ export default function BillsPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState("PENDING");
 
-    // Form State (Handles both Create and Edit)
+    // Form State
     const [editingId, setEditingId] = useState<string | null>(null);
     const [name, setName] = useState("");
     const [amount, setAmount] = useState("");
@@ -164,7 +164,7 @@ export default function BillsPage() {
     const [nextDueDate, setNextDueDate] = useState(new Date().toISOString().split('T')[0]);
     const [accountId, setAccountId] = useState("");
 
-    // Modals & History State Restored
+    // Modals
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [billToDelete, setBillToDelete] = useState<string | null>(null);
     const [payModalOpen, setPayModalOpen] = useState(false);
@@ -307,14 +307,22 @@ export default function BillsPage() {
         }
     };
 
-    // --- REPAIRED FILTER ENGINE ---
-    // Respects the original code's data flow, ensuring paid bills are tracked via transactions or DB status.
+    // --- REPAIRED DYNAMIC FILTER ENGINE ---
     const filteredBills = useMemo(() => {
+        const now = new Date().getTime();
+
         return bills.filter(b => {
             const matchesSearch = b.name.toLowerCase().includes(searchTerm.toLowerCase());
 
-            // Allow DB status, OR check if it has a populated transactions array
-            const isPaid = b.status === "PAID" || (b.transactions && b.transactions.length > 0);
+            const dueTime = new Date(b.nextDueDate).getTime();
+
+            // Core Logic: It is only "PENDING" if the due date is in the past, or within the next 10 days.
+            // If the due date is pushed further than 10 days out, it is considered "Settled" for the current cycle.
+            const isDueSoon = (dueTime - now) > 0 && (dueTime - now) <= 10 * 24 * 60 * 60 * 1000;
+            const isOverdue = dueTime <= now;
+
+            const isPaid = !isOverdue && !isDueSoon;
+
             const matchesStatus = statusFilter === "ALL" ||
                 (statusFilter === "PAID" && isPaid) ||
                 (statusFilter === "PENDING" && !isPaid);
@@ -407,10 +415,12 @@ export default function BillsPage() {
                                 </div>
                             ) : (
                                 filteredBills.map((bill) => {
-                                    const dueDate = new Date(bill.nextDueDate);
-                                    const isPaid = bill.status === "PAID" || (bill.transactions && bill.transactions.length > 0);
-                                    const isDueSoon = dueDate.getTime() - new Date().getTime() < 7 * 24 * 60 * 60 * 1000;
-                                    const isOverdue = !isPaid && dueDate.getTime() < new Date().getTime();
+                                    const now = new Date().getTime();
+                                    const dueTime = new Date(bill.nextDueDate).getTime();
+
+                                    const isDueSoon = (dueTime - now) > 0 && (dueTime - now) <= 10 * 24 * 60 * 60 * 1000;
+                                    const isOverdue = dueTime <= now;
+                                    const isPaid = !isOverdue && !isDueSoon;
 
                                     const acc = accounts.find(a => a.id === bill.accountId) || bill.account;
                                     const sourceAlias = parseAccountName(acc?.name || "");
