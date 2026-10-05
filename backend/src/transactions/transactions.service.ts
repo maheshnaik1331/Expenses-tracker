@@ -10,10 +10,40 @@ export class TransactionsService {
   constructor(private prisma: PrismaService) { }
 
   // ==========================================
+  // 🌟 STRICT IST TIMEZONE ENGINE
+  // Eliminates the "5:30 AM" UTC Midnight Bug
+  // ==========================================
+  private enforceIST(dateInput?: any): Date {
+    if (!dateInput) return new Date();
+
+    let dateStr = dateInput instanceof Date ? dateInput.toISOString() : String(dateInput);
+
+    // If it's a pure date (e.g., "2026-10-06"), append midnight time
+    if (dateStr.length === 10) {
+      dateStr += 'T00:00:00.000';
+    }
+
+    // Violently strip the "Z" (Zulu/UTC) flag so Node doesn't shift the time
+    if (dateStr.endsWith('Z')) {
+      dateStr = dateStr.slice(0, -1);
+    }
+
+    // If no timezone offset exists, permanently bind it to IST (+05:30)
+    if (!dateStr.includes('+') && !dateStr.match(/-\d{2}:\d{2}$/)) {
+      dateStr += '+05:30';
+    }
+
+    return new Date(dateStr);
+  }
+
+  // ==========================================
   // 1. CREATE STANDARD TRANSACTION
   // ==========================================
   async create(userId: string, createDto: CreateTransactionDto) {
     const { amount, type, accountId, toAccountId } = createDto;
+
+    // Force IST on the incoming date
+    const istDate = this.enforceIST(createDto.date);
 
     return this.prisma.$transaction(async (prisma) => {
       // Fetch source account
@@ -73,6 +103,7 @@ export class TransactionsService {
       return prisma.transaction.create({
         data: {
           ...createDto,
+          date: istDate, // Inject the strict IST date
           userId,
         },
       });
@@ -88,6 +119,9 @@ export class TransactionsService {
     if (fromAccountId === toAccountId) {
       throw new BadRequestException('Source and destination accounts must be different.');
     }
+
+    // Force IST on the incoming date
+    const istDate = this.enforceIST(date);
 
     return this.prisma.$transaction(async (prisma) => {
       const source = await prisma.account.findFirst({ where: { id: fromAccountId, userId } });
@@ -121,7 +155,7 @@ export class TransactionsService {
           accountId: fromAccountId,
           toAccountId: toAccountId,
           userId,
-          date: date ? new Date(date) : new Date(),
+          date: istDate, // Inject the strict IST date
         },
         include: {
           account: true,
@@ -168,6 +202,12 @@ export class TransactionsService {
   // 5. UPDATE TRANSACTION safely
   // ==========================================
   async update(userId: string, id: string, updateData: UpdateTransactionDto) {
+    // Intercept and force IST if the user is updating the date/time
+    const updatePayload = { ...updateData };
+    if (updatePayload.date) {
+      updatePayload.date = this.enforceIST(updatePayload.date);
+    }
+
     return this.prisma.$transaction(async (prisma) => {
       const originalTx = await prisma.transaction.findFirst({
         where: { id, userId },
@@ -202,10 +242,10 @@ export class TransactionsService {
       }
 
       // --- STEP B: Apply the new transaction impact ---
-      const newAccountId = updateData.accountId || originalTx.accountId;
-      const newToAccountId = updateData.toAccountId || originalTx.toAccountId;
-      const newAmount = updateData.amount !== undefined ? updateData.amount : originalTx.amount;
-      const newType = updateData.type || originalTx.type;
+      const newAccountId = updatePayload.accountId || originalTx.accountId;
+      const newToAccountId = updatePayload.toAccountId || originalTx.toAccountId;
+      const newAmount = updatePayload.amount !== undefined ? updatePayload.amount : originalTx.amount;
+      const newType = updatePayload.type || originalTx.type;
 
       if (newType === TransactionType.INCOME) {
         await prisma.account.update({
@@ -231,7 +271,7 @@ export class TransactionsService {
       // --- STEP C: Update the record ---
       return prisma.transaction.update({
         where: { id },
-        data: updateData,
+        data: updatePayload,
       });
     });
   }

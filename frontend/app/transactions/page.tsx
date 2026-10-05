@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import {
     Loader2, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft,
-    Search, Receipt, Coffee, Home, Car, Wallet, Briefcase,
+    Search, Filter, Receipt, Coffee, Home, Car, Wallet, Briefcase,
     Pencil, Trash2, Calendar, ShieldAlert, X, Repeat, ChevronDown, Check, Landmark, Banknote,
     TrendingUp, Clock, ArrowRight, Sparkles, Layers
 } from "lucide-react";
@@ -185,13 +185,17 @@ export default function TransactionsPage() {
     const [typeFilter, setTypeFilter] = useState("ALL");
     const [timeFilter, setTimeFilter] = useState("THIS_MONTH");
 
+    const now = new Date();
+    const initialH = now.getHours().toString().padStart(2, '0');
+    const initialM = now.getMinutes().toString().padStart(2, '0');
+
     const [form, setForm] = useState({
         type: "EXPENSE",
         amount: "",
         category: EXPENSE_CATEGORIES[0],
         note: "",
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toTimeString().slice(0, 5),
+        date: now.toISOString().split('T')[0],
+        time: `${initialH}:${initialM}`,
         accountId: "",
         toAccountId: ""
     });
@@ -222,14 +226,17 @@ export default function TransactionsPage() {
     }, [user, loading]);
 
     const resetForm = () => {
-        const now = new Date();
+        const resetNow = new Date();
+        const h = resetNow.getHours().toString().padStart(2, '0');
+        const m = resetNow.getMinutes().toString().padStart(2, '0');
+
         setForm({
             type: "EXPENSE",
             amount: "",
             category: EXPENSE_CATEGORIES[0],
             note: "",
-            date: now.toISOString().split('T')[0],
-            time: now.toTimeString().slice(0, 5),
+            date: resetNow.toISOString().split('T')[0],
+            time: `${h}:${m}`,
             accountId: accounts.length > 0 ? accounts[0].id : "",
             toAccountId: ""
         });
@@ -248,13 +255,16 @@ export default function TransactionsPage() {
     const handleEditClick = (tx: any, e: React.MouseEvent) => {
         e.stopPropagation();
         const txDate = new Date(tx.date);
+        const h = txDate.getHours().toString().padStart(2, '0');
+        const m = txDate.getMinutes().toString().padStart(2, '0');
+
         setForm({
             type: tx.type,
             amount: tx.amount.toString(),
             category: tx.category,
             note: tx.note || "",
             date: txDate.toLocaleDateString('en-CA'),
-            time: txDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+            time: `${h}:${m}`,
             accountId: tx.accountId,
             toAccountId: tx.toAccountId || ""
         });
@@ -289,6 +299,7 @@ export default function TransactionsPage() {
         try {
             setSubmitting(true);
 
+            // FLAWLESS TIMEZONE BINDING
             const [year, month, day] = form.date.split('-').map(Number);
             const [hours, minutes] = form.time.split(':').map(Number);
             const preciseDate = new Date(year, month - 1, day, hours, minutes).toISOString();
@@ -355,6 +366,7 @@ export default function TransactionsPage() {
             return matchesSearch && matchesType && matchesTime;
         });
 
+        // Strict Chronological Sort using Absolute Epoch Timestamps
         return filtered.sort((a, b) => {
             const timeA = new Date(a.date).getTime();
             const timeB = new Date(b.date).getTime();
@@ -847,8 +859,8 @@ export default function TransactionsPage() {
                                                     <button type="button" onClick={() => handleTypeChange("TRANSFER")} className={`py-2.5 sm:py-3 text-[10px] sm:text-[11px] font-black uppercase tracking-wider rounded-lg transition-all ${form.type === "TRANSFER" ? "bg-white text-indigo-600 shadow-sm border border-slate-200/60" : "text-slate-500 hover:text-slate-900"}`}>Transfer</button>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                                                    <div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                                                    <div className="sm:col-span-1">
                                                         <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Amount (₹)</label>
                                                         <input
                                                             type="text" inputMode="numeric" required value={form.amount} onChange={handleAmountChange}
@@ -856,13 +868,23 @@ export default function TransactionsPage() {
                                                             placeholder="0"
                                                         />
                                                     </div>
-                                                    <div>
+                                                    <div className="sm:col-span-1">
                                                         <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Date</label>
                                                         <div className="relative w-full">
                                                             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
                                                             <input
                                                                 type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
                                                                 className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none modern-date-input cursor-pointer"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="sm:col-span-1">
+                                                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Time</label>
+                                                        <div className="relative w-full">
+                                                            <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
+                                                            <input
+                                                                type="time" required value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })}
+                                                                className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm outline-none modern-time-input cursor-pointer"
                                                             />
                                                         </div>
                                                     </div>

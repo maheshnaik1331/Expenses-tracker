@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsEnum, IsPositive } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsEnum, IsISO8601 } from 'class-validator';
 import { TransactionType } from '@prisma/client';
 
 export class CreateTransactionDto {
@@ -6,21 +6,24 @@ export class CreateTransactionDto {
     type: TransactionType;
 
     @IsNumber()
-    @IsPositive()
     amount: number;
 
     @IsString()
     category: string;
 
+    @IsString()
+    accountId: string;
+
+    @IsOptional()
+    @IsString()
+    toAccountId?: string;
+
     @IsOptional()
     @IsString()
     note?: string;
 
-    @IsString()
-    accountId: string;
-
-    // NEW: Required for Transfers
+    // Explicitly defining the date property to accept the exact IST timestamp from the frontend
     @IsOptional()
-    @IsString()
-    toAccountId?: string;
+    @IsISO8601()
+    date?: string | Date;
 }
