@@ -10,29 +10,27 @@ export class TransactionsService {
   constructor(private prisma: PrismaService) { }
 
   // ==========================================
-  // 🌟 STRICT IST TIMEZONE ENGINE
-  // Eliminates the "5:30 AM" UTC Midnight Bug
+  // 🌟 SAFE TIME PARSER
+  // Trusts the frontend's explicitly defined timezone string
   // ==========================================
   private enforceIST(dateInput?: any): Date {
-    if (!dateInput) return new Date();
+    if (!dateInput) {
+      return new Date();
+    }
 
     let dateStr = dateInput instanceof Date ? dateInput.toISOString() : String(dateInput);
 
-    // If it's a pure date (e.g., "2026-10-06"), append midnight time
+    // If the frontend sent the explicit +05:30 timezone offset, we parse it directly.
+    if (dateStr.includes('+') || dateStr.match(/-\d{2}:\d{2}$/)) {
+      return new Date(dateStr);
+    }
+
+    // If the frontend sends a naked date (e.g. YYYY-MM-DD), force it to be midnight IST
     if (dateStr.length === 10) {
-      dateStr += 'T00:00:00.000';
+      return new Date(`${dateStr}T00:00:00.000+05:30`);
     }
 
-    // Violently strip the "Z" (Zulu/UTC) flag so Node doesn't shift the time
-    if (dateStr.endsWith('Z')) {
-      dateStr = dateStr.slice(0, -1);
-    }
-
-    // If no timezone offset exists, permanently bind it to IST (+05:30)
-    if (!dateStr.includes('+') && !dateStr.match(/-\d{2}:\d{2}$/)) {
-      dateStr += '+05:30';
-    }
-
+    // Fallback parser for standard payload formats
     return new Date(dateStr);
   }
 
@@ -42,8 +40,8 @@ export class TransactionsService {
   async create(userId: string, createDto: CreateTransactionDto) {
     const { amount, type, accountId, toAccountId } = createDto;
 
-    // Force IST on the incoming date
-    const istDate = this.enforceIST(createDto.date);
+    // Securely parse the explicit frontend date
+    const finalDate = this.enforceIST(createDto.date);
 
     return this.prisma.$transaction(async (prisma) => {
       // Fetch source account
@@ -103,7 +101,7 @@ export class TransactionsService {
       return prisma.transaction.create({
         data: {
           ...createDto,
-          date: istDate, // Inject the strict IST date
+          date: finalDate, // Inject the mathematically perfect date
           userId,
         },
       });
@@ -120,8 +118,7 @@ export class TransactionsService {
       throw new BadRequestException('Source and destination accounts must be different.');
     }
 
-    // Force IST on the incoming date
-    const istDate = this.enforceIST(date);
+    const finalDate = this.enforceIST(date);
 
     return this.prisma.$transaction(async (prisma) => {
       const source = await prisma.account.findFirst({ where: { id: fromAccountId, userId } });
@@ -155,7 +152,7 @@ export class TransactionsService {
           accountId: fromAccountId,
           toAccountId: toAccountId,
           userId,
-          date: istDate, // Inject the strict IST date
+          date: finalDate,
         },
         include: {
           account: true,
@@ -202,7 +199,6 @@ export class TransactionsService {
   // 5. UPDATE TRANSACTION safely
   // ==========================================
   async update(userId: string, id: string, updateData: UpdateTransactionDto) {
-    // Intercept and force IST if the user is updating the date/time
     const updatePayload = { ...updateData };
     if (updatePayload.date) {
       updatePayload.date = this.enforceIST(updatePayload.date);

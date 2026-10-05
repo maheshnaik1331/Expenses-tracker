@@ -13,13 +13,12 @@ import {
     Plus, Loader2, Receipt, X, ChevronDown, Check,
     Laptop, Zap, Home, Shield, MoreVertical, Edit2, Trash2, ShieldAlert, Wallet,
     ListCollapse, Calendar, Landmark, Banknote, Search, FileText,
-    Pencil, Briefcase
+    Pencil, Briefcase, Clock
 } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -171,10 +170,11 @@ export default function BillsPage() {
     const [activeBill, setActiveBill] = useState<RecurringBill | null>(null);
     const [billHistory, setBillHistory] = useState<RecurringBill | null>(null);
 
-    // Payment Overrides
+    // EXACT IST PAYMENT OVERRIDES
     const [payAmount, setPayAmount] = useState("");
     const [payAccountId, setPayAccountId] = useState("");
     const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
+    const [payTime, setPayTime] = useState(new Date().toTimeString().slice(0, 5)); // ADDED EXACT TIME FIX
     const [processingPayment, setProcessingPayment] = useState(false);
 
     const fetchData = async () => {
@@ -280,7 +280,12 @@ export default function BillsPage() {
         setActiveBill(bill);
         setPayAmount(bill.amount.toString());
         setPayAccountId(bill.account?.id || bill.accountId);
-        setPayDate(new Date().toISOString().split('T')[0]);
+
+        // Ensure execution triggers strictly at the EXACT local time
+        const now = new Date();
+        setPayDate(now.toISOString().split('T')[0]);
+        setPayTime(now.toTimeString().slice(0, 5));
+
         setPayModalOpen(true);
     };
 
@@ -291,10 +296,15 @@ export default function BillsPage() {
 
         setProcessingPayment(true);
         try {
+            // MERGE DATE AND TIME FOR FLAWLESS IST EXECUTION
+            const [year, month, day] = payDate.split('-').map(Number);
+            const [hours, minutes] = payTime.split(':').map(Number);
+            const preciseDate = new Date(year, month - 1, day, hours, minutes).toISOString();
+
             await api.patch(`/recurring-bills/${activeBill.id}/pay`, {
                 amount: parseFloat(cleanAmount),
                 accountId: payAccountId,
-                date: new Date(payDate).toISOString()
+                date: preciseDate // No more 5:30 AM bug.
             });
 
             toast.success(`${activeBill.name} marked as paid!`);
@@ -316,8 +326,6 @@ export default function BillsPage() {
 
             const dueTime = new Date(b.nextDueDate).getTime();
 
-            // Core Logic: It is only "PENDING" if the due date is in the past, or within the next 10 days.
-            // If the due date is pushed further than 10 days out, it is considered "Settled" for the current cycle.
             const isDueSoon = (dueTime - now) > 0 && (dueTime - now) <= 10 * 24 * 60 * 60 * 1000;
             const isOverdue = dueTime <= now;
 
@@ -367,7 +375,8 @@ export default function BillsPage() {
 
                 <style dangerouslySetInnerHTML={{
                     __html: `
-        .modern-date-input::-webkit-calendar-picker-indicator {
+        .modern-date-input::-webkit-calendar-picker-indicator,
+        .modern-time-input::-webkit-calendar-picker-indicator {
           background: transparent; bottom: 0; color: transparent; cursor: pointer;
           height: auto; left: 0; position: absolute; right: 0; top: 0; width: auto;
         }
@@ -591,14 +600,26 @@ export default function BillsPage() {
                                                 <p className="font-black text-xl text-slate-900 tracking-tight">{activeBill.name}</p>
                                             </div>
 
-                                            <div>
-                                                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Transaction Date</label>
-                                                <div className="relative w-full">
-                                                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
-                                                    <input
-                                                        type="date" required value={payDate} onChange={(e) => setPayDate(e.target.value)}
-                                                        className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm modern-date-input cursor-pointer"
-                                                    />
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                                                <div>
+                                                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Date</label>
+                                                    <div className="relative w-full">
+                                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
+                                                        <input
+                                                            type="date" required value={payDate} onChange={(e) => setPayDate(e.target.value)}
+                                                            className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm modern-date-input cursor-pointer"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-2">Time</label>
+                                                    <div className="relative w-full">
+                                                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold pointer-events-none" />
+                                                        <input
+                                                            type="time" required value={payTime} onChange={(e) => setPayTime(e.target.value)}
+                                                            className="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm modern-time-input cursor-pointer"
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
 

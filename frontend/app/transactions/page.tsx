@@ -15,7 +15,20 @@ import {
     TrendingUp, Clock, ArrowRight, Sparkles, Layers
 } from "lucide-react";
 
-// --- UTILITIES ---
+// --- STRICT LOCAL TIME UTILITIES ---
+const getLocalYYYYMMDD = (date = new Date()) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const getLocalHHMM = (date = new Date()) => {
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+};
+
 const formatINR = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
 
 const INCOME_CATEGORIES = ["Salary", "Freelance", "Investments", "Refund", "Other"];
@@ -46,7 +59,6 @@ const AmbientLedgerCanvas = () => {
 
     return (
         <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-            {/* Soft Ambient Mesh Orbs */}
             <motion.div
                 animate={{ x: [0, 40, 0], y: [0, -30, 0], scale: [1, 1.1, 1] }}
                 transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
@@ -63,23 +75,13 @@ const AmbientLedgerCanvas = () => {
                 className="absolute bottom-0 left-1/4 w-[350px] h-[350px] bg-emerald-400/10 rounded-full blur-[100px]"
             />
 
-            {/* Drifting Micro-Icons */}
             {floaters.map((el) => (
                 <motion.div
                     key={el.id}
                     className={`absolute bottom-[-10%] ${el.color}`}
                     style={{ left: el.left }}
-                    animate={{
-                        y: ["0vh", "-115vh"],
-                        x: [0, 25, -25, 0],
-                        rotate: [0, 180, 360]
-                    }}
-                    transition={{
-                        duration: el.duration,
-                        repeat: Infinity,
-                        delay: el.delay,
-                        ease: "linear"
-                    }}
+                    animate={{ y: ["0vh", "-115vh"], x: [0, 25, -25, 0], rotate: [0, 180, 360] }}
+                    transition={{ duration: el.duration, repeat: Infinity, delay: el.delay, ease: "linear" }}
                 >
                     <el.Icon className={`${el.size} opacity-25`} />
                 </motion.div>
@@ -185,17 +187,13 @@ export default function TransactionsPage() {
     const [typeFilter, setTypeFilter] = useState("ALL");
     const [timeFilter, setTimeFilter] = useState("THIS_MONTH");
 
-    const now = new Date();
-    const initialH = now.getHours().toString().padStart(2, '0');
-    const initialM = now.getMinutes().toString().padStart(2, '0');
-
     const [form, setForm] = useState({
         type: "EXPENSE",
         amount: "",
         category: EXPENSE_CATEGORIES[0],
         note: "",
-        date: now.toISOString().split('T')[0],
-        time: `${initialH}:${initialM}`,
+        date: getLocalYYYYMMDD(), // STRCIT LOCAL DATE
+        time: getLocalHHMM(),     // STRICT LOCAL TIME
         accountId: "",
         toAccountId: ""
     });
@@ -226,17 +224,13 @@ export default function TransactionsPage() {
     }, [user, loading]);
 
     const resetForm = () => {
-        const resetNow = new Date();
-        const h = resetNow.getHours().toString().padStart(2, '0');
-        const m = resetNow.getMinutes().toString().padStart(2, '0');
-
         setForm({
             type: "EXPENSE",
             amount: "",
             category: EXPENSE_CATEGORIES[0],
             note: "",
-            date: resetNow.toISOString().split('T')[0],
-            time: `${h}:${m}`,
+            date: getLocalYYYYMMDD(),
+            time: getLocalHHMM(),
             accountId: accounts.length > 0 ? accounts[0].id : "",
             toAccountId: ""
         });
@@ -255,16 +249,14 @@ export default function TransactionsPage() {
     const handleEditClick = (tx: any, e: React.MouseEvent) => {
         e.stopPropagation();
         const txDate = new Date(tx.date);
-        const h = txDate.getHours().toString().padStart(2, '0');
-        const m = txDate.getMinutes().toString().padStart(2, '0');
 
         setForm({
             type: tx.type,
             amount: tx.amount.toString(),
             category: tx.category,
             note: tx.note || "",
-            date: txDate.toLocaleDateString('en-CA'),
-            time: `${h}:${m}`,
+            date: getLocalYYYYMMDD(txDate), // Safe strict date extract
+            time: getLocalHHMM(txDate),     // Safe strict time extract
             accountId: tx.accountId,
             toAccountId: tx.toAccountId || ""
         });
@@ -299,17 +291,16 @@ export default function TransactionsPage() {
         try {
             setSubmitting(true);
 
-            // FLAWLESS TIMEZONE BINDING
-            const [year, month, day] = form.date.split('-').map(Number);
-            const [hours, minutes] = form.time.split(':').map(Number);
-            const preciseDate = new Date(year, month - 1, day, hours, minutes).toISOString();
+            // THE FLAWLESS PAYLOAD: Directly constructing the strict IST explicit string. 
+            // e.g., "2026-10-06T14:30:00.000+05:30"
+            const preciseDate = `${form.date}T${form.time}:00.000+05:30`;
 
             const payload = {
                 type: form.type,
                 amount: parseFloat(cleanAmount),
                 category: form.category,
                 note: form.note,
-                date: preciseDate,
+                date: preciseDate, // Safely sent to backend
                 accountId: form.accountId,
                 toAccountId: form.type === "TRANSFER" ? form.toAccountId : null
             };
@@ -338,7 +329,6 @@ export default function TransactionsPage() {
         if (!isNaN(numericValue)) setForm({ ...form, amount: numericValue.toLocaleString("en-IN") });
     };
 
-    // --- DYNAMIC FILTERING & FLAWLESS LOG-ORDER SORTING ENGINE ---
     const filteredTransactions = useMemo(() => {
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -377,7 +367,6 @@ export default function TransactionsPage() {
         });
     }, [transactions, searchTerm, typeFilter, timeFilter]);
 
-    // --- STRICT ARRAY-BASED DAY GROUPING & SIMULATED RUNNING BALANCES ---
     const groupedTransactions = useMemo(() => {
         const groups: { label: string, timestamp: number, dailyNet: number, transactions: any[] }[] = [];
         const now = new Date();
