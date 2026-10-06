@@ -196,9 +196,20 @@ export default function BillsPage() {
         }
     };
 
+    // Find this existing useEffect and replace it completely:
     useEffect(() => {
         if (!authLoading && user) fetchData();
+
+        // The Voice Listener
+        const handleVoiceUpdate = () => {
+            console.log("Voice command detected: Reloading Contracts...");
+            fetchData();
+        };
+
+        window.addEventListener('refresh-ledger', handleVoiceUpdate);
+        return () => window.removeEventListener('refresh-ledger', handleVoiceUpdate);
     }, [authLoading, user]);
+
 
     const resetForm = () => {
         setName("");

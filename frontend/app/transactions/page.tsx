@@ -220,8 +220,21 @@ export default function TransactionsPage() {
     };
 
     useEffect(() => {
+        // 1. Initial load
         if (!loading && user) fetchLedgerData();
+
+        // 2. The Global Voice Listener: Refetches data when the mic fires a command
+        const handleVoiceUpdate = () => {
+            fetchLedgerData();
+        };
+
+        window.addEventListener('refresh-ledger', handleVoiceUpdate);
+
+        // 3. Clean up the listener when leaving the page
+        return () => window.removeEventListener('refresh-ledger', handleVoiceUpdate);
     }, [user, loading]);
+
+
 
     const resetForm = () => {
         setForm({

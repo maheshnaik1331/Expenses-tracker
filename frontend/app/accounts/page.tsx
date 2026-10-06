@@ -109,8 +109,18 @@ export default function AccountsPage() {
         }
     };
 
+    // Find your data-fetching useEffect and replace it:
     useEffect(() => {
-        if (!loading && user) fetchAccounts();
+        if (!loading && user) fetchAccounts(); // Assuming your function is named fetchAccountsData
+
+        // The Voice Listener
+        const handleVoiceUpdate = () => {
+            console.log("Voice command detected: Recalculating Asset Balances...");
+            fetchAccounts();
+        };
+
+        window.addEventListener('refresh-ledger', handleVoiceUpdate);
+        return () => window.removeEventListener('refresh-ledger', handleVoiceUpdate);
     }, [user, loading]);
 
     useEffect(() => {
