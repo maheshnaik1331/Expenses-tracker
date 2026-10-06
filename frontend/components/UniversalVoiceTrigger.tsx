@@ -14,6 +14,7 @@ export default function UniversalVoiceTrigger() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [lastSpoken, setLastSpoken] = useState<string | null>(null);
 
+    // Smart fuzzy matcher to link spoken words to exact Database IDs
     const resolveAccountId = (queryName: string | undefined, accounts: any[]) => {
         if (!queryName || accounts.length === 0) return accounts[0]?.id;
         const cleanQuery = queryName.toLowerCase();
@@ -34,15 +35,16 @@ export default function UniversalVoiceTrigger() {
     const handleDispatch = async (intent: VoiceIntent) => {
         setIsProcessing(true);
         try {
+            // 1. Navigation
             if (intent.module === "NAVIGATE") {
                 router.push(intent.path);
                 toast.success(`Navigated to ${intent.path}`);
                 return;
             }
 
+            // 2. Ledger (Income / Expense)
             if (intent.module === "LEDGER_EXPENSE" || intent.module === "LEDGER_INCOME") {
-                const accRes = await api.get("/accounts");
-                const accounts = accRes.data || [];
+                const { data: accounts } = await api.get("/accounts");
                 const targetAccountId = resolveAccountId(intent.accountName, accounts);
 
                 await api.post("/transactions", {
@@ -53,18 +55,16 @@ export default function UniversalVoiceTrigger() {
                     accountId: targetAccountId,
                     date: getStrictISTTimestamp(),
                 });
-
                 toast.success(`Recorded ₹${intent.amount} ${intent.module === "LEDGER_EXPENSE" ? "Expense" : "Income"}`);
-                window.dispatchEvent(new Event('refresh-ledger'));
             }
 
+            // 3. Ledger (Transfers)
             if (intent.module === "LEDGER_TRANSFER") {
-                const accRes = await api.get("/accounts");
-                const accounts = accRes.data || [];
+                const { data: accounts } = await api.get("/accounts");
                 const fromId = resolveAccountId(intent.fromAccount, accounts);
                 const toId = accounts.find((a: any) => a.id !== fromId && (intent.toAccount ? a.name.toLowerCase().includes(intent.toAccount.toLowerCase()) : true))?.id;
 
-                if (!toId) throw new Error("Destination account not identified.");
+                if (!toId) throw new Error("Could not determine destination account.");
 
                 await api.post("/transactions", {
                     type: "TRANSFER",
@@ -75,45 +75,85 @@ export default function UniversalVoiceTrigger() {
                     toAccountId: toId,
                     date: getStrictISTTimestamp(),
                 });
-
                 toast.success(`Transferred ₹${intent.amount}`);
-                window.dispatchEvent(new Event('refresh-ledger'));
             }
 
-            if (intent.module === "BILL_PAY") {
-                const billsRes = await api.get("/recurring-bills");
-                const bills = billsRes.data || [];
-                const targetBill = bills.find((b: any) => b.name.toLowerCase().includes(intent.billName.toLowerCase()));
+            // 4. Accounts Creation
+            if (intent.module === "ACCOUNT_CREATE") {
+                await api.post("/accounts", {
+                    name: intent.accountName,
+                    type: intent.accountType,
+                    currentBalance: intent.initialBalance,
+                });
+                toast.success(`Created ${intent.accountType.toLowerCase()} account: ${intent.accountName}`);
+            }
 
-                if (!targetBill) {
-                    toast.error(`Could not find bill named "${intent.billName}"`);
-                    return;
-                }
+            // 5. Bills Execution
+            if (intent.module === "BILL_PAY") {
+                const { data: bills } = await api.get("/recurring-bills");
+                const targetBill = bills.find((b: any) => b.name.toLowerCase().includes(intent.billName.toLowerCase()));
+                if (!targetBill) throw new Error(`Could not find bill: ${intent.billName}`);
 
                 await api.patch(`/recurring-bills/${targetBill.id}/pay`, {
                     amount: targetBill.amount,
                     accountId: targetBill.accountId,
                     date: getStrictISTTimestamp(),
                 });
-
                 toast.success(`Settled contract: ${targetBill.name}`);
-                window.dispatchEvent(new Event('refresh-ledger'));
             }
 
+            // 6. Bills Creation
+            if (intent.module === "BILL_CREATE") {
+                const { data: accounts } = await api.get("/accounts");
+                await api.post("/recurring-bills", {
+                    name: intent.billName,
+                    amount: intent.amount,
+                    interval: intent.interval,
+                    category: "Other",
+                    accountId: accounts[0]?.id,
+                    nextDueDate: new Date().toISOString()
+                });
+                toast.success(`Created recurring contract: ${intent.billName}`);
+            }
+
+            // 7. Planner Tasks
             if (intent.module === "TASK_CREATE") {
                 await api.post("/tasks", {
                     title: intent.title,
-                    priority: intent.priority || "MEDIUM",
+                    priority: intent.priority,
                     status: "PENDING",
                     dueDate: new Date().toISOString(),
                 });
-
                 toast.success(`Task created: "${intent.title}"`);
+            }
+
+            if (intent.module === "TASK_COMPLETE") {
+                const { data: tasks } = await api.get("/tasks");
+                const matchedTask = tasks.find((t: any) => t.title.toLowerCase().includes(intent.title.toLowerCase()));
+                if (!matchedTask) throw new Error(`Task not found: ${intent.title}`);
+
+                await api.patch(`/tasks/${matchedTask.id}`, { status: "COMPLETED" });
+                toast.success(`Completed task: "${matchedTask.title}"`);
+            }
+
+            // 8. Health Tracker
+            if (intent.module === "TRACKER_LOG") {
+                await api.post("/cycles", {
+                    startDate: new Date().toISOString(),
+                    flow: intent.flow,
+                    symptoms: intent.symptoms,
+                    notes: "Logged via Voice Command",
+                });
+                toast.success("Health cycle logged successfully.");
             }
 
             if (intent.module === "UNKNOWN") {
                 toast.error(`Could not interpret: "${intent.raw}"`);
+                return;
             }
+
+            // Globally trigger all pages to silently refresh their data
+            window.dispatchEvent(new Event('refresh-ledger'));
 
         } catch (err: any) {
             toast.error(err?.response?.data?.message || err.message || "Failed to execute voice command.");
@@ -125,7 +165,7 @@ export default function UniversalVoiceTrigger() {
     const handleStartListening = () => {
         const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
         if (!SpeechRecognition) {
-            toast.error("Web Speech API is not supported in this browser. Please use Chrome, Edge, or Safari.");
+            toast.error("Voice recognition not supported on this browser.");
             return;
         }
 
@@ -134,19 +174,9 @@ export default function UniversalVoiceTrigger() {
         recognition.continuous = false;
         recognition.interimResults = false;
 
-        recognition.onstart = () => {
-            setIsListening(true);
-            setLastSpoken(null);
-        };
-
-        recognition.onend = () => {
-            setIsListening(false);
-        };
-
-        recognition.onerror = () => {
-            setIsListening(false);
-            toast.error("Speech recognition error or audio blocked.");
-        };
+        recognition.onstart = () => { setIsListening(true); setLastSpoken(null); };
+        recognition.onend = () => setIsListening(false);
+        recognition.onerror = () => { setIsListening(false); toast.error("Audio blocked or not detected."); };
 
         recognition.onresult = (event: any) => {
             const transcript = event.results[0][0].transcript;
@@ -166,7 +196,7 @@ export default function UniversalVoiceTrigger() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 20 }}
-                        className="fixed bottom-24 right-6 z-50 bg-slate-900/95 backdrop-blur-xl text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-3 max-w-sm"
+                        className="fixed bottom-24 right-6 z-[999] bg-slate-900/95 backdrop-blur-xl text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-3 max-w-sm"
                     >
                         {isProcessing ? (
                             <Loader2 className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
@@ -176,7 +206,7 @@ export default function UniversalVoiceTrigger() {
                             <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                         )}
                         <p className="text-xs font-bold truncate">
-                            {isListening ? "Listening (e.g. 'Spent 200 on Lunch from SBI')..." : isProcessing ? "Executing action..." : `"${lastSpoken}"`}
+                            {isListening ? "Listening..." : isProcessing ? "Executing action..." : `"${lastSpoken}"`}
                         </p>
                     </motion.div>
                 )}
@@ -187,9 +217,7 @@ export default function UniversalVoiceTrigger() {
                 whileTap={{ scale: 0.92 }}
                 onClick={handleStartListening}
                 disabled={isProcessing}
-                className={`fixed bottom-6 right-6 z-50 p-4 rounded-full shadow-[0_10px_35px_rgb(0,0,0,0.25)] transition-all flex items-center justify-center ${isListening
-                    ? "bg-rose-500 text-white ring-8 ring-rose-500/20 animate-pulse"
-                    : "bg-slate-900 text-white hover:bg-blue-600"
+                className={`fixed bottom-6 right-6 z-[999] p-4 rounded-full shadow-[0_10px_35px_rgb(0,0,0,0.25)] transition-all flex items-center justify-center ${isListening ? "bg-rose-500 text-white ring-8 ring-rose-500/20 animate-pulse" : "bg-slate-900 text-white hover:bg-blue-600"
                     }`}
             >
                 <Mic className="w-6 h-6 font-bold" strokeWidth={2.5} />
