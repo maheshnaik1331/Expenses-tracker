@@ -80,7 +80,7 @@ export const INDIAN_BANK_DIRECTORY: BankItem[] = [
     { id: "bnp-paribas", name: "BNP Paribas", domain: "bnpparibas.co.in", category: "FOREIGN" },
     { id: "citibank", name: "Citibank N.A.", domain: "citibank.co.in", category: "FOREIGN" },
     { id: "deutsche", name: "Deutsche Bank A.G.", domain: "deutschebank.co.in", category: "FOREIGN" },
-    { id: "hsbc", name: "Hong Kong and Shanghai Banking Corporation Limited", domain: "hsbc.co.in", category: "FOREIGN" },
+    { id: "hsbc", name: "Hong Kong and Shanghai Banking Corporation Limited", domain: "hsbc.bank.in", category: "FOREIGN" },
     { id: "jpmorgan", name: "J.P. Morgan Chase Bank N.A.", domain: "jpmorgan.com", category: "FOREIGN" },
     { id: "standard-chartered", name: "Standard Chartered Bank", domain: "sc.bank.in", category: "FOREIGN" },
     { id: "dbs", name: "DBS Bank India Limited", domain: "dbs.bank.in", category: "FOREIGN" },
